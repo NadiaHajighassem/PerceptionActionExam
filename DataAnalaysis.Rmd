@@ -1,5 +1,5 @@
 ---
-title: "Data analysis for motion capture data""
+title: "Data analysis"
 author: "Nadia and Katharina"
 output:
   html_document:
@@ -19,12 +19,13 @@ knit: (function(inputFile, encoding) {
       output_file = "DataAnalysis.html"))})
 ---
 
--   .
 
 ```{r setuP}
 ## Setup chunk
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
+
+Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at. 
 
 ```{r loading packages}
 pacman::p_load(
@@ -54,7 +55,7 @@ data_dir <- path_home() %>%
   path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")
 
 # set your study group
-group_number <- 8
+group_number <- 1
 
 # The available conditions and their start and end frame indices
 # to use the whole file, just set the value for the condition to c(NA, NA)
@@ -66,10 +67,12 @@ conditions <- list(
 )
 ```
 
+In this section we are just defining functions, that will be used later on. The first function is process_qtm_tsv, which converts the QTM TSV file into a data frame. The second function is gap_fill_linear.
+
 ```{r defining functions}
 process_qtm_tsv <- function(
     data_file,
-    condition_regex = "group[0-9]+_([^_\\.]+).*",
+    condition_regex = "group[0-9]+_([^_\\.]+).*", # a regular expression used to search for patterns
     null_value = "NA"
   ) {
   "This function processes a QTM TSV file and reads it into a dataframe.
@@ -198,14 +201,55 @@ process_qtm_tsv <- function(
   return(list(data = dat, metadata = metadata))
 
 }
+
+gap_fill_linear <- function(x) {
+  "This function does a linear gap fill for a vector.
+
+  Only columns with at least 2 non-NA values will be gap filled.
+
+  Args:
+    x (vector): The vector to gap fill.
+
+  Returns:
+    The gap filled vector.
+  "
+  # get the indices of the NA values
+  na_indices <- which(is.na(x))
+  # get the indices of the non-NA values
+  non_na_indices <- which(!is.na(x))
+
+  if (length(na_indices) == 0) {
+    # if there are no NA values, just return the vector
+    return(x)
+  }
+
+  if (length(non_na_indices) < 2) {
+    # if there are less than 2 non-NA values, we can't do a linear interpolation
+    return(x)
+  }
+  # get the values of the non-NA indices
+  non_na_values <- x[non_na_indices]
+  # get the values of the NA indices
+  na_values <- x[na_indices]
+  # now we can do a linear interpolation
+  na_values <- approx(
+    x = non_na_indices,
+    y = non_na_values,
+    xout = na_indices,
+    method = "linear"
+  )$y
+  # now we can replace the NA values with the interpolated values
+  x[na_indices] <- na_values
+  # and return the vector
+  return(x)
+}
+
 ```
 
-```{}
-```
 
 And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
 
-```{r load Trajectory Labels}
+```{r}
 # load the labels from the XML file
 
 # load the XML file
@@ -245,11 +289,11 @@ traj_labels <- data.frame(
 )
 
 rm(xmlfile, traj_names, traj_colors)
-
 ```
 
-```{r 'Load Trajectory Data'}
+Finally loading in data hehehe (insert elmo meme with fire in the background)
 
+```{r 'Load Trajectory Data'}
 # load the trajectory data, we want all TSVs with the group number in the name
 
 # get the files
@@ -257,7 +301,6 @@ traj_files <- fs::dir_ls(data_dir, regexp = paste0("group", group_number, "_.*\\
 
 # load the data
 traj_data <- lapply(traj_files, process_qtm_tsv)
-
 
 # now we need to combine the data into a single data frame
 
@@ -309,6 +352,197 @@ traj_data <- traj_data %>%
     values_from = value
   )
 
+# Making sure that we have all of the different markers HEHEHEEH HI KAT
+unique(traj_data$marker)
+
 #traj_data$marker <- factor(traj_data$marker, levels = marker_names)
 
+
+#In simple terms, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
+
 ```
+# Trim the trajectories
+
+Here's where you cut the start and ends off of the trajectores, this is useful for example
+when you know that there's some setup time or a delay from recording start to end, or if you just 
+want to look at a specific section of the data.
+
+If you set up the conditions correctly in the setup section, then you can just run this cell and it will
+crop the data for you.
+
+```{r 'Crop trajectory data'}
+
+# We want to crop the data for each condition
+# let's get all the recorded conditions
+recorded_conditions <- unique(traj_data$condition)
+for (cond in recorded_conditions) {
+  # get the start and end frame for the condition
+  start_frame <- conditions[[cond]][1]
+  if (is.na(start_frame)) start_frame <- 1
+  end_frame <- conditions[[cond]][2]
+  if (is.na(end_frame)) end_frame <- max(traj_data[traj_data$condition == cond, "index"])
+  # crop the data
+  traj_data <- traj_data %>% 
+    dplyr::filter(condition == cond & index >= start_frame & index <= end_frame | condition != cond)
+}
+
+# select min and max indices by condition
+traj_data %>% 
+  group_by(condition) %>% 
+  summarise(
+    min_index = min(index),
+    max_index = max(index))
+
+# report observations per condition
+traj_data %>% 
+  group_by(condition, subject, marker) %>% 
+  summarise(
+    n_obs = n()
+  ) %>%
+  print(n = 100)
+
+```
+
+```{r}
+## Filtering out custom condition
+traj_data <- traj_data %>% 
+  dplyr::filter(condition %in% c("leadfollow", "followlead")) ## a bit confused why this works
+
+## Checking to see if the filtering worked :)
+traj_data %>%
+  distinct(condition)
+```
+# Inspect the data
+
+I've included some ways here of inspecting the data to see if there are any obvious problems.
+
+## Check for large jumps in trajectory data
+
+This is a simple check to see if there are any large jumps in the data, this can indicate that there are
+some label errors (e.g. label `hand_left` became label `hand_right`), or that the data is just bad.
+
+```{r 'Check for large jumps in trajectory data'}
+# we want to check for large jumps in the data
+# this indicates potential label errors
+
+# we will do this by calculating the distance between each marker for each time point
+# of course, by condition
+
+
+# calculate the euclidean distance between each marker (using x, y, z)
+# we will do this by condition, subject, marker and axis
+marker_distances <- traj_data %>% 
+  group_by(condition, subject, marker) %>%
+  arrange(index) %>%
+  mutate(
+    diff_x = x - dplyr::lag(x, 1),
+    diff_y = y - dplyr::lag(y, 1),
+    diff_z = z - dplyr::lag(z, 1)
+  )
+  
+
+# now we can calculate the euclidean distance per maker
+marker_distances <- marker_distances %>% 
+  mutate(
+    euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+  )
+
+# now we can plot the series for each marker, and see if anything stands out
+marker_distances %>% 
+  ggplot(aes(x = index, y = euclidean_distance)) +
+  geom_line(aes(color = factor(marker)), linewidth=1.25) +
+  theme_minimal() +
+  facet_wrap(c(~condition, ~subject)) +
+  labs(
+    x = "Index",
+    y = "Euclidean distance",
+    title = "Euclidean distance from previous frame by marker"
+  )
+
+# save the plot
+ggsave(
+  filename = "./results/euclidean_distance_by_marker.png",
+  width = 10,
+  height = 10,
+  units = "cm",
+  dpi = 300
+)
+
+```
+# Check for NAs
+
+Specifically, this checks how much of a given trajectory is `NA` values and how long the longest sequence
+of `NA` values is. This can be useful for deciding whether to discard a marker or not.
+
+*Remember, you'll want to make sure that both subject A and B have at least one good quality matching marker.*
+
+```{r 'Get information about NAs'}	
+
+# get NAs counts
+# by condition, marker, subject and axis
+nas_cond_marker <- traj_data %>%
+  group_by(condition, subject, marker) %>%
+  summarise_at(
+    vars(x, y, z),
+    ~ sum(is.na(.))
+  )
+
+# plot to check if it is acceptable
+nas_cond_marker %>% 
+  ggplot(aes(x = marker, y = x, fill=marker, group=subject)) +
+  geom_col(
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  facet_wrap(c(~subject, ~condition)) +
+  labs(
+    x = "Marker",
+    y = "NA count",
+    title = "NA count by marker"
+  )
+
+ggsave(
+  filename = "./results/NA_count_by_marker.png",
+  width = 10,
+  height = 10,
+  units = "cm",
+  dpi = 300
+)
+
+
+# Now we can get the longest sequence of NAs for each marker
+longest_na_seq <- traj_data %>% 
+  group_by(condition, subject, marker) %>%
+  summarise_at(
+    vars(x, y, z),
+    ~ max(rle(is.na(.))$lengths)
+  )
+
+# plot to check if it is acceptable
+longest_na_seq %>% 
+  ggplot(aes(x = marker, y = x, fill=marker, group=subject)) +
+  geom_col(
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  facet_wrap(c(~subject, ~condition)) +
+  labs(
+    x = "Marker",
+    y = "Longest NA sequence",
+    title = "Longest NA sequence by marker"
+  )
+
+ggsave(
+  filename = "./results/longest_na_sequence_by_marker.png",
+  width = 10,
+  height = 10,
+  units = "cm",
+  dpi = 300
+)
+
+```
+## Note to self: This is probably, where will have to look at the different groups and check for NA's aka markers that haven't been labeled. Hopefully there isn't too many NA's and we can go straight to the analysis part. 
+
+
