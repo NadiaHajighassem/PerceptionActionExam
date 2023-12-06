@@ -47,6 +47,23 @@ if (basename(wd) != "PerceptionActionExam") {
   setwd("./PerceptionActionExam")
 }
 
+# set the directory for the data
+# note, path_home() will return the path to your home directory
+# your home directory is the one that contains your documents, downloads, etc.
+data_dir <- path_home() %>% 
+  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")
+
+# set your study group
+group_number <- 8
+
+# The available conditions and their start and end frame indices
+# to use the whole file, just set the value for the condition to c(NA, NA)
+conditions <- list(
+  jointlead = c(NA, NA),
+  followlead = c(NA, NA),
+  leadfollow = c(NA, NA),
+  custom = c(NA, NA)
+)
 ```
 
 ```{r defining functions}
@@ -183,57 +200,16 @@ process_qtm_tsv <- function(
 }
 ```
 
-```{r defining functions}
-gap_fill_linear <- function(x) {
-  "This function does a linear gap fill for a vector.
-
-  Only columns with at least 2 non-NA values will be gap filled.
-
-  Args:
-    x (vector): The vector to gap fill.
-
-  Returns:
-    The gap filled vector.
-  "
-  # get the indices of the NA values
-  na_indices <- which(is.na(x))
-  # get the indices of the non-NA values
-  non_na_indices <- which(!is.na(x))
-
-  if (length(na_indices) == 0) {
-    # if there are no NA values, just return the vector
-    return(x)
-  }
-
-  if (length(non_na_indices) < 2) {
-    # if there are less than 2 non-NA values, we can't do a linear interpolation
-    return(x)
-  }
-  # get the values of the non-NA indices
-  non_na_values <- x[non_na_indices]
-  # get the values of the NA indices
-  na_values <- x[na_indices]
-  # now we can do a linear interpolation
-  na_values <- approx(
-    x = non_na_indices,
-    y = non_na_values,
-    xout = na_indices,
-    method = "linear"
-  )$y
-  # now we can replace the NA values with the interpolated values
-  x[na_indices] <- na_values
-  # and return the vector
-  return(x)
-}
+```{}
 ```
 
-And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markes match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
+And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
 
-```{r 'Load Trajectory Labels'}
+```{r load Trajectory Labels}
 # load the labels from the XML file
 
 # load the XML file
-xmlfile <- xmlParse("./resources/PerAct23_LabelList.xml")
+xmlfile <- xmlParse("PerAct23_LabelList.xml")
 
 # get the labels, which are in the following format:
 # <QTM_Label_List_Ver_1.00>
@@ -269,5 +245,70 @@ traj_labels <- data.frame(
 )
 
 rm(xmlfile, traj_names, traj_colors)
+
+```
+
+```{r 'Load Trajectory Data'}
+
+# load the trajectory data, we want all TSVs with the group number in the name
+
+# get the files
+traj_files <- fs::dir_ls(data_dir, regexp = paste0("group", group_number, "_.*\\.tsv$"))
+
+# load the data
+traj_data <- lapply(traj_files, process_qtm_tsv)
+
+
+# now we need to combine the data into a single data frame
+
+# first we need to add the condition and group to each data frame
+traj_data <- lapply(traj_data, function(x) {
+  x$data$condition <- x$metadata$condition
+  x$data$group <- paste0("group", group_number)
+  return(x)
+})
+
+# now we can combine the data
+traj_data <- do.call(bind_rows, lapply(traj_data, `[[`, "data"))
+
+# make the condition and group factors
+traj_data$condition <- factor(traj_data$condition)
+traj_data$group <- factor(traj_data$group)
+
+# take a look at the data
+head(traj_data)
+
+# let's also make sure that all of the marker names are the same
+# we can do this by getting the unique marker names
+marker_names <- unique(traj_data %>% select(contains("_x")) %>% names() %>% stri_replace_last_regex("_x", ""))
+
+# now we can check that all of the marker names are the same
+assertthat::assert_that(
+  all(marker_names == traj_labels$traj_names),
+  msg = "Not all marker names are the same"
+)
+
+# let's make the data long format so we can easily group by subject or marker
+traj_data <- traj_data %>% 
+  pivot_longer(
+    cols = contains("_x") | contains("_y") | contains("_z"),
+    cols_vary = "slowest",
+    names_to = "marker",
+    values_to = "value"
+  ) %>%
+  mutate(
+    subject = stri_replace_first_regex(marker, "^([AB])_.*", "$1"),
+    axis = stri_extract_last_regex(marker, "[xyz]$"),
+    marker = stri_replace_first_regex(marker, "^[AB]_([a-zA-Z_]+)_[xyz]$", "$1")
+  )
+
+# move axes to columns
+traj_data <- traj_data %>% 
+  pivot_wider(
+    names_from = axis,
+    values_from = value
+  )
+
+#traj_data$marker <- factor(traj_data$marker, levels = marker_names)
 
 ```
