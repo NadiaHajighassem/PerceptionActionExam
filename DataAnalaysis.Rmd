@@ -15,7 +15,7 @@ knit: (function(inputFile, encoding) {
     rmarkdown::render(
       inputFile,
       encoding = encoding,
-      output_dir = 'documents/assignments/solutions',
+      output_dir = "PerceptionActionExam",
       output_file = "DataAnalysis.html"))})
 ---
 
@@ -55,7 +55,7 @@ data_dir <- path_home() %>%
   path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")
 
 # set your study group
-group_number <- 1
+group_number <- 8
 
 # The available conditions and their start and end frame indices
 # to use the whole file, just set the value for the condition to c(NA, NA)
@@ -293,6 +293,8 @@ rm(xmlfile, traj_names, traj_colors)
 
 Finally loading in data hehehe (insert elmo meme with fire in the background)
 
+Aditionally, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
+
 ```{r 'Load Trajectory Data'}
 # load the trajectory data, we want all TSVs with the group number in the name
 
@@ -355,11 +357,7 @@ traj_data <- traj_data %>%
 # Making sure that we have all of the different markers HEHEHEEH HI KAT
 unique(traj_data$marker)
 
-#traj_data$marker <- factor(traj_data$marker, levels = marker_names)
-
-
-#In simple terms, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
-
+#traj_data$marker <- factor(traj_data$marker, levels = marker_names) ## i cant remember why this is here, but i think it is important later. 
 ```
 # Trim the trajectories
 
