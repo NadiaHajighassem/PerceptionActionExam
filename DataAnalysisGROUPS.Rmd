@@ -342,174 +342,265 @@ for (df_name in group_dataframes) {
 # Get a list of objects in the workspace
 objects <- ls()
 
-# Filter objects that start with "group" followed by a number and underscore
-group_dataframes <- grep("^group\\d+_", objects, value = TRUE)
+# Process Joint Lead Dataframes
+joint_lead_dataframes <- grep("_jointlead$", objects, value = TRUE)
+joint_lead_list <- lapply(joint_lead_dataframes, get)
+joint_lead_combined <- bind_rows(joint_lead_list, .id = "group") %>%
+  mutate(type = "joint_lead")
 
-# Iterate over the matching dataframes and apply the operation
-for (df_name in group_dataframes) {
-  df <- get(df_name)  # Get the dataframe
-  
-  # Identify columns with NAs
-  na_columns <- colnames(df)[colSums(is.na(df)) > 0]
-  
-  # Select "marker" column and columns with NAs
-  columns_to_summarize <- c("marker", na_columns)
-  
-  result <- df %>%
-    select(all_of(columns_to_summarize)) %>%
-    group_by(marker) %>%
-    summarise(across(everything(), ~ sum(is.na(.)))) %>%
-    arrange(across("x"))
-  
-  # Plotting
-  p <- ggplot(result, aes(x = marker, y = x)) +
-    geom_bar(stat = "identity") +
-    labs(title = df_name, x = "Marker", y = "Number of NA")+
-    theme_minimal()+
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  
-  # Print each plot
-  print(p)
-}
+# Process Lead Follow Dataframes
+lead_follow_dataframes <- grep("_leadfollow$", objects, value = TRUE)
+lead_follow_list <- lapply(lead_follow_dataframes, get)
+lead_follow_combined <- bind_rows(lead_follow_list, .id = "group") %>%
+  mutate(type = "lead_follow")
 
+# Combine both datasets
+combined_df <- bind_rows(joint_lead_combined, lead_follow_combined)
+
+# Identifying columns with NAs and processing
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+columns_to_summarize <- c("marker", na_columns, "group", "type")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  select(all_of(columns_to_summarize)) %>%
+  group_by(group, marker, type) %>%
+  summarise(across(everything(), ~ sum(is.na(.))), .groups = "drop") %>%
+  arrange(marker, type)
+
+
+# Plotting with facet wrap
+p <- ggplot(result, aes(x = marker, y = x, fill = marker)) +
+  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
+  labs(title = "NA's in Combined Dataframes", x = "Marker", y = "Number of NA") +
+  facet_wrap(~ type) +
+  coord_flip()
+
+# Print the combined plot
+print(p)
 ```
 
 ```{r}
-##JOINT LEAD COMBINED PLOT##
+# Now we can get the longest sequence of NAs for each marker
+longest_na_seq <- combined_df %>% 
+  group_by(condition, subject, marker) %>%
+  summarise_at(
+    vars(x, y, z),
+    ~ max(rle(is.na(.))$lengths)
+  )
 
-# Get a list of objects in the workspace
-objects <- ls()
-
-# Filter objects that end with "_JointLead"
-joint_lead_dataframes <- grep("_jointlead$", objects, value = TRUE)
-
-# Create an empty list to store dataframes
-df_list <- list()
-
-# Iterate over the matching dataframes and store them in the list
-for (df_name in joint_lead_dataframes) {
-  df <- get(df_name)  # Get the dataframe
-  df_list[[df_name]] <- df
-}
-
-# Combine dataframes into a single dataframe with an additional 'group' column
-combined_df <- bind_rows(df_list, .id = "group")
-
-# Identify columns with NAs
-na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
-
-# Select "marker" column and columns with NAs
-columns_to_summarize <- c("marker", na_columns, "group")
-
-# Summarize the number of NAs for each marker
-result <- combined_df %>%
-  select(all_of(columns_to_summarize)) %>%
-  group_by(group, marker) %>%
-  summarise(across(everything(), ~ sum(is.na(.)))) %>%
-  arrange(across("marker"))
-
-# Plotting
-p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Combined JointLead Dataframes Total NA's", x = "Marker", y = "Number of NA") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_discrete(name = "Group")
-
-# Print the combined plot
-print(p)
-
-##LEADFOLLOW COMBINED PLOT##
-# Get a list of objects in the workspace
-objects <- ls()
-
-# Filter objects that end with "_leadfollow"
-joint_lead_dataframes <- grep("_leadfollow$", objects, value = TRUE)
-
-# Create an empty list to store dataframes
-df_list <- list()
-
-# Iterate over the matching dataframes and store them in the list
-for (df_name in joint_lead_dataframes) {
-  df <- get(df_name)  # Get the dataframe
-  df_list[[df_name]] <- df
-}
-
-# Combine dataframes into a single dataframe with an additional 'group' column
-combined_df <- bind_rows(df_list, .id = "group")
-
-# Identify columns with NAs
-na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
-
-# Select "marker" column and columns with NAs
-columns_to_summarize <- c("marker", na_columns, "group")
-
-# Summarize the number of NAs for each marker
-result <- combined_df %>%
-  select(all_of(columns_to_summarize)) %>%
-  group_by(group, marker) %>%
-  summarise(across(everything(), ~ sum(is.na(.)))) %>%
-  arrange(across("marker"))
-
-# Plotting
-p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Combined LeadFollow Dataframes Total NA's", x = "Marker", y = "Number of NA") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_discrete(name = "Group")
-
-# Print the combined plot
-print(p)
-
-
-##COMBINED FOLLOWLEAD SETS ##
-
-# Get a list of objects in the workspace
-objects <- ls()
-
-# Filter objects that end with "_followlead"
-joint_lead_dataframes <- grep("_followlead$", objects, value = TRUE)
-
-# Create an empty list to store dataframes
-df_list <- list()
-
-# Iterate over the matching dataframes and store them in the list
-for (df_name in joint_lead_dataframes) {
-  df <- get(df_name)  # Get the dataframe
-  df_list[[df_name]] <- df
-}
-
-# Combine dataframes into a single dataframe with an additional 'group' column
-combined_df <- bind_rows(df_list, .id = "group")
-
-# Identify columns with NAs
-na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
-
-# Select "marker" column and columns with NAs
-columns_to_summarize <- c("marker", na_columns, "group")
-
-# Summarize the number of NAs for each marker
-result <- combined_df %>%
-  select(all_of(columns_to_summarize)) %>%
-  group_by(group, marker) %>%
-  summarise(across(everything(), ~ sum(is.na(.)))) %>%
-  arrange(across("marker"))
-
-# Plotting
-p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Combined FollowLead Dataframes total NA's", x = "Marker", y = "Number of NA") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_discrete(name = "Group")
-
-# Print the combined plot
-print(p)
+# plot to check if it is acceptable
+longest_na_seq %>% 
+  ggplot(aes(x = marker, y = x, fill=marker, group=subject)) +
+  geom_col(
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  facet_wrap(c(~subject, ~condition)) +
+  labs(
+    x = "Marker",
+    y = "Longest NA sequence",
+    title = "Longest NA sequence by marker"
+  )
 ```
 
-Unfortunately, the elbow markers have a lot of NA's. According to our plots, "head_top" is consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers.
+Unfortunately, the elbow markers have a lot of NA's. According to our plots, the head markers are consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers. However, the head_top is only present for participant A, and therefore we must choose either head_left or head_right. Since head_right has fewer NA's and the longest sequence is also smaller, we proceed with head_right.
 
 ## Euclidean distance
 
+```{r euclidean_distance_all}
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+
+  # Calculate the euclidean distance between each marker (using x, y, z)
+  # We will do this by subject, marker, and axis
+  marker_distances <- df %>% 
+    group_by(subject, marker) %>%
+    arrange(index) %>%
+    mutate(
+      diff_x = x - dplyr::lag(x, 1),
+      diff_y = y - dplyr::lag(y, 1),
+      diff_z = z - dplyr::lag(z, 1)
+    ) %>%
+    mutate(
+      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+    )
+
+  # Plot the series for each marker, and see if anything stands out
+  plot <- marker_distances %>% 
+    ggplot(aes(x = index, y = euclidean_distance)) +
+    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
+    theme_minimal() +
+    facet_wrap(~condition + subject) +
+    labs(
+      x = "Index",
+      y = "Euclidean distance",
+      title = "Euclidean distance from the previous frame by marker",
+      subtitle = paste( df$group[1], "Condition:", df$condition[1])
+    )
+  
+  # Print the plot
+  print(plot)
+}
+
+
+```
+
+```{r euclidean_distance_selected_markers}
+##ONLY SPECIFIC LABELS##
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+
+  # Calculate the euclidean distance between each marker (using x, y, z)
+  # We will do this by subject, marker, and axis
+  marker_distances <- df %>% 
+    group_by(subject, marker) %>%
+    arrange(index) %>%
+    mutate(
+      diff_x = x - dplyr::lag(x, 1),
+      diff_y = y - dplyr::lag(y, 1),
+      diff_z = z - dplyr::lag(z, 1)
+    ) %>%
+    mutate(
+      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+    )%>%
+    # Filter only the specified markers
+    dplyr::filter(marker %in% c("head_right", "hand_right", "hand_left", "chest"))
+
+
+  # Plot the series for each marker, and see if anything stands out
+  plot <- marker_distances %>% 
+    ggplot(aes(x = index, y = euclidean_distance)) +
+    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
+    theme_minimal() +
+    facet_wrap(~condition + subject) +
+    labs(
+      x = "Index",
+      y = "Euclidean distance",
+      title = "Euclidean distance from the previous frame by marker",
+      subtitle = paste( df$group[1], "Condition:", df$condition[1])
+    )
+  
+  # Print the plot
+  print(plot)
+}
+```
+
+## Choosing markers
+
+Before filling gaps, we specify the markers we wish to choose. As specified before, we choose chest, hands and head.
+
+```{r}
+# get the markers of interest
+markers_of_interest <- c(
+  "hand_right",
+  "head_right",
+  "hand_left",
+  "chest"
+)
+
+# now we can select the markers of interest
+selected_traj_data <- combined_df %>% 
+  dplyr::filter(marker %in% markers_of_interest)
+```
+
+```{r}
+#NA
+summarise_all(selected_traj_data, ~ sum(is.na(.)))
+selected_traj_data %>%
+  group_by(marker) %>%
+  summarise(na_count = sum(is.na(x)))
+
+#NON NA
+selected_traj_data %>%
+  group_by(marker) %>%
+  summarise(non_na_count = sum(!is.na(x)))
+
+```
+
+Our data is roughly 1/4 parts NA's; we proceed with linear gap filling to try and minimize this number.
+
 ## Gap-filling
+
+```{r}
+# Assuming markers_of_interest is defined and has at least 4 elements
+for(n in 1:9){
+  for (sel_idx in 1:4) {
+  selected_traj_data <- combined_df %>% 
+  dplyr::filter(marker %in% markers_of_interest)
+  
+  # Plot a single marker's x, y, and z values before gap filling
+  plot_before <- selected_traj_data %>%
+    dplyr::filter(group == n) %>% 
+    dplyr::filter(marker == markers_of_interest[sel_idx]) %>%
+    ggplot(aes(x = elapsed_time, y = x, color=subject)) +
+    geom_line() +
+    facet_wrap(c(~condition)) +
+    labs(
+      x = "Elapsed time",
+      y = "Marker X position",
+      title = paste("Marker", markers_of_interest[sel_idx], "X position before gap filling", "group", n)
+    )
+  
+  print(plot_before)
+
+  ggsave(
+    plot_before,
+    filename = paste0(
+      "./results/marker_",
+      markers_of_interest[sel_idx],
+      "group",
+      n,
+      "_x_position_before_gap_filling.png"),
+    width = 10,
+    height = 10,
+    units = "cm",
+    dpi = 300
+  )
+
+  # Apply the linear gap fill function to each column, by condition
+  selected_traj_data <- selected_traj_data %>% 
+    group_by(condition, subject, marker) %>% 
+    mutate_at(
+      vars(x, y, z),
+      ~ gap_fill_linear(.)
+    )
+
+  # Plot a single marker's x, y, and z values after gap filling
+  plot_after <- selected_traj_data %>%
+    dplyr::filter(group == n) %>% 
+    dplyr::filter(marker == markers_of_interest[sel_idx]) %>%
+    ggplot(aes(x = elapsed_time, y = x, color = subject)) +
+    geom_line() +
+    facet_wrap(c(~condition)) +
+    labs(
+      x = "Elapsed time",
+      y = "Marker X position",
+      title = paste("Marker", markers_of_interest[sel_idx], "X position after gap filling", "group", n)
+    )
+  
+  print(plot_after)
+
+  ggsave(
+    plot_after,
+    filename = paste0(
+      "./results/marker_",
+      markers_of_interest[sel_idx],
+      "group",
+      n,
+      "_x_position_after_gap_filling.png"),
+    width = 10,
+    height = 10,
+    units = "cm",
+    dpi = 300
+  )
+  }
+}
+
+```
+
+Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
+
+## Trimming trajectories

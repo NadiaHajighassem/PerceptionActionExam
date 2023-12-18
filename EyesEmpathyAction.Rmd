@@ -33,6 +33,7 @@ pacman::p_load(
 #Aesthetic setup
 theme_set(theme_ipsum())
 bar_colour <- "#0e3b85"
+aesthetic_palette <- c("#624C40","#97986E","#CBAF9A","#93703B","#9E2825")
 ```
 
 # Pre-processing
