@@ -52,7 +52,10 @@ if (basename(wd) != "PerceptionActionExam") {
 # note, path_home() will return the path to your home directory
 # your home directory is the one that contains your documents, downloads, etc.
 data_dir <- path_home() %>% 
-  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")
+  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
+
+#data_dir <- path_home() %>% 
+ # path("Desktop","UNI", "Perception & Action", "Exam", "data", "tsvs") ## Katharina's path
 
 # set your study group
 group_number <- 8
@@ -69,7 +72,6 @@ conditions <- list(
 # Calling functions
 source("Functions.R")
 ```
-
 
 And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
 
@@ -118,6 +120,7 @@ rm(xmlfile, traj_names, traj_colors)
 Finally loading in data hehehe (insert elmo meme with fire in the background)
 
 Aditionally, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
+
 ```{r}
 ## this loads in all the files
 #traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
@@ -131,10 +134,8 @@ traj_files <- fs::dir_ls(data_dir, regexp = paste0("group", group_number, "_.*\\
 
 
 # load the data
-traj_data <- lapply(traj_files, process_qtm_tsv)
+traj_data <- lapply(traj_files, process_qtm_tsv) ## This basically reads in the data 
 
-
-# now we need to combine the data into a single data frame
 
 # first we need to add the condition and group to each data frame
 traj_data <- lapply(traj_data, function(x) {
@@ -144,7 +145,7 @@ traj_data <- lapply(traj_data, function(x) {
 })
 
 # now we can combine the data
-traj_data <- do.call(bind_rows, lapply(traj_data, `[[`, "data"))
+traj_data <- do.call(bind_rows, lapply(traj_data, `[[`, "data")) ## This basically combines all the lists into one dataframe
 
 # make the condition and group factors
 traj_data$condition <- factor(traj_data$condition)
@@ -239,6 +240,8 @@ traj_data <- traj_data %>%
 traj_data %>%
   distinct(condition)
 ```
+
+
 
 # Inspect the data
 
@@ -373,16 +376,11 @@ ggsave(
 
 ## Note to self: This is probably, where will have to look at the different groups and check for NA's aka markers that haven't been labeled. Hopefully there isn't too many NA's and we can go straight to the analysis part.
 
-TL:DR;
-There is a problem with group 7 and 10
-There is a problem with loading all the data files in.
-I will continue with data analysis, so we can ask Peter
---------------------------------------------------------
+TL:DR; There is a problem with group 7 and 10 There is a problem with loading all the data files in. I will continue with data analysis, so we can ask Peter --------------------------------------------------------
 
 # Pick your poison
 
-You can choose one or more markers and put them in the `markers_of_interest` variable below. This will
-then be used for the rest of the analysis.
+You can choose one or more markers and put them in the `markers_of_interest` variable below. This will then be used for the rest of the analysis.
 
 ```{r 'Choose markers of interest'}
 # we want to choose the markers of interest
@@ -405,8 +403,7 @@ selected_traj_data <- traj_data %>%
 
 # Gap filling
 
-Now that we're left with mainly the data we want to work with, we can do some gap filling to eliminate
-any `NA` values, just beware that it can't fill NAs at the start or end of the data.
+Now that we're left with mainly the data we want to work with, we can do some gap filling to eliminate any `NA` values, just beware that it can't fill NAs at the start or end of the data.
 
 ```{r 'Gap fill trajectory data'}
 # we are only going to do a linear gap fill, it's not elegant, but it works
@@ -473,42 +470,105 @@ ggsave(
 
 ```
 
-## ICA ##
+```{r}
+# Get a list of objects in the global environment
+all_objects <- ls()
 
-We will do dimensionality reduction with ICA  using the r package fastICA
+# Define a regular expression to match group identifiers followed by a number between 0 and 13
+regex_pattern <- "^group([0-9]|1[0-3])_"
 
-https://www.rdocumentation.org/packages/fastICA/versions/1.2-4/topics/fastICA
-https://cran.r-project.org/web/packages/iTensor/vignettes/iTensor-1.html 
+# Filter objects that match the pattern
+group_objects <- grep(regex_pattern, all_objects, value = TRUE)
 
-In short ICA attempts to ‘un-mix’ the data by estimating an un-mixing matrix W where XW = S.
+# Loop through each object and apply the operations
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+  
+  # Check if 'condition' and 'group' columns exist
+  if (!all(c("condition", "group") %in% names(df))) {
+    warning(paste("Data frame", df_name, "does not have 'condition' and/or 'group' columns. Skipping."))
+    next
+  }
+  
+  # Add factors for condition and group
+  df$condition <- factor(df$condition)
+  df$group <- factor(df$group)
+  
+  # Pivot the data
+  df <- df %>% 
+    pivot_longer(
+      cols = contains("_x") | contains("_y") | contains("_z"),
+      cols_vary = "slowest",
+      names_to = "marker",
+      values_to = "value"
+    ) %>%
+    mutate(
+      subject = stri_replace_first_regex(marker, "^([AB])_.*", "$1"),
+      axis = stri_extract_last_regex(marker, "[xyz]$"),
+      marker = stri_replace_first_regex(marker, "^[AB]_([a-zA-Z_]+)_[xyz]$", "$1")
+    ) %>%
+    # Move axes to columns
+    pivot_wider(
+      names_from = axis,
+      values_from = value
+    )
+  
+  # Assign the modified data frame back to the original variable
+  assign(df_name, df)
+  
+  # Print the data frame name
+  cat("Data frame:", df_name, "\n")
+  
+  # Print the first few rows of the pivoted data frame
+  print(head(df))
+  
+  cat("\n")
+}
+```
 
-Under this generative model the measured ‘signals’ in X will tend to be `more Gaussian' than the source components (in S) due to the Central Limit Theorem. Thus, in order to extract the independent components/sources we search for an un-mixing matrix W that maximizes the non-gaussianity of the sources.
+
+
+
+## ICA
+
+We will do dimensionality reduction with ICA using the r package fastICA
+
+<https://www.rdocumentation.org/packages/fastICA/versions/1.2-4/topics/fastICA> <https://cran.r-project.org/web/packages/iTensor/vignettes/iTensor-1.html>
+
+In short ICA attempts to 'un-mix' the data by estimating an un-mixing matrix W where XW = S.
+
+Under this generative model the measured 'signals' in X will tend to be \`more Gaussian' than the source components (in S) due to the Central Limit Theorem. Thus, in order to extract the independent components/sources we search for an un-mixing matrix W that maximizes the non-gaussianity of the sources.
 
 In FastICA, non-gaussianity is measured using approximations to neg-entropy () which are more robust than kurtosis-based measures and fast to compute.
 
 We need to do the following things in order to do ICA
 
-1. Convert dataframe to matrix
-2. Apply fastICA
-3. Plotting
+1.  Convert dataframe to matrix
+2.  Apply fastICA
+3.  Plotting
 
 ## Am i supposed to do this on one marker or multiple markers?
 
-```{r filter by condition}
-followlead_8 <- selected_traj_data %>% 
-  dplyr::filter(condition == "followlead") 
-```
+## GroupICA
 
+Peter's stuff: \## Start med at kigge på raw data (tag hver markers x-position) \## Eventuelt group ICA? -\> dynamic time warping \## ICA individually -\> Cross-correlation analysis \## Raw data
 
-```{Convert dataframe to matrix}
+```{r Convert dataframe to matrix}
 ## dataframe with hand_right marker being converted to matrix
-x <- data.matrix(followlead_8) 
+x <- data.matrix(selected_traj_data) 
+
+## removing NA's as a temporary solution
+x <- na.omit(x)
 ```
+
 ```{r apply ICA}
 ## We should try different functions
 a <- fastICA(x, 3, alg.typ = "parallel", fun = "logcosh", alpha = 1,
              method = "R", row.norm = FALSE, maxit = 200,
              tol = 0.0001, verbose = TRUE)
+
+
 
 ## side note: neg-entropy is a way of measuring how much a distribution deviates from a Gaussian distribution. We want to maximize neg-entropy because it maximizes independence, which is the whole purpose of ICA.
 ```
@@ -519,7 +579,6 @@ independent_components <- a$S # OH MAH GOD I UNDERSTAND NOTHITNREFD
 
 independent_components <- as.data.frame(independent_components)
 ```
-
 
 ```{r plotting independent components}
 par(mfrow = c(1, 3)) # Set up a 1x2 plotting grid for two components
@@ -539,10 +598,8 @@ par(mfrow = c(1, 2))# Set up a 1x2 plotting grid for two components
 plot(a$X)
 plot(a$S)[,1] # WHAT IS THIS OH MAH GOD
 
-# Plot the original data before applying ICA
+## Plot the original data before applying ICA
 for (i in 1:2) {
   plot(x[, i], type = "l", main = paste("Original Data Dimension", i), ylab = "Amplitude", xlab = "Time")
 }
 ```
-
-

@@ -1,0 +1,308 @@
+---
+title: "Data analysis"
+author: "Nadia and Katharina"
+output:
+  html_document:
+      toc: yes
+      number_sections: no
+      toc_float: yes
+      theme: united
+      highlight: espresso
+      css: '../../varia/standard.css'
+geometry: margin=1in
+knit: (function(inputFile, encoding) {
+  browseURL(
+    rmarkdown::render(
+      inputFile,
+      encoding = encoding,
+      output_dir = "html.file",
+      output_file = "DataAnalysis.html"))})
+---
+
+```{r setuP}
+## Setup chunk
+knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Preprocessing ##
+
+Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
+
+```{r loading packages}
+pacman::p_load(
+  "XML",
+  "tidyverse",
+  "fs",
+  "assertthat",
+  "stringi",
+  "dtw",
+  "RTransferEntropy",
+  "signal",
+  "conflicted",
+  "Rcpp",
+  "future",
+  "fastICA"
+)
+
+## Making sure we are in the right directory
+wd <- getwd()
+if (basename(wd) != "PerceptionActionExam") {
+  setwd("./PerceptionActionExam")
+}
+
+# set the directory for the data
+# note, path_home() will return the path to your home directory
+# your home directory is the one that contains your documents, downloads, etc.
+data_dir <- path_home() %>% 
+  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
+
+#data_dir <- path_home() %>% 
+ # path("Desktop","UNI", "Perception & Action", "Exam", "data", "tsvs") ## Katharina's path
+
+
+# The available conditions and their start and end frame indices
+# to use the whole file, just set the value for the condition to c(NA, NA)
+conditions <- list(
+  jointlead = c(NA, NA),
+  followlead = c(NA, NA),
+  leadfollow = c(NA, NA),
+  custom = c(NA, NA)
+)
+
+# Calling functions
+source("Functions.R")
+```
+
+And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
+
+```{r}
+# load the labels from the XML file
+
+# load the XML file
+xmlfile <- xmlParse("PerAct23_LabelList.xml")
+
+# get the labels, which are in the following format:
+# <QTM_Label_List_Ver_1.00>
+#     <Trajectories>
+#         <Trajectory>
+#             <Name>A_head_top</Name>
+#             <Color R="0" G="147" B="0"/>
+#         </Trajectory>
+#     </Trajectories>
+# </QTM_Label_List_Ver_1.00>
+
+# get the trajectory names
+traj_names <- xpathSApply(xmlfile, "//Trajectory/Name", xmlValue)
+
+# get the trajectory colors
+traj_colors <- xpathSApply(xmlfile, "//Trajectory/Color", xmlAttrs)
+
+# convert the colors to hex
+traj_colors <- rgb(
+  as.numeric(traj_colors[1,]),
+  as.numeric(traj_colors[2,]),
+  as.numeric(traj_colors[3,]),
+  alpha = 255,
+  maxColorValue = 255
+)
+
+
+# combine the names and colors into a data frame
+traj_labels <- data.frame(
+  traj_names,
+  traj_colors,
+  stringsAsFactors = FALSE
+)
+
+rm(xmlfile, traj_names, traj_colors)
+```
+
+Finally loading in data hehehe (insert elmo meme with fire in the background)
+
+Aditionally, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
+
+```{r }
+## the code lists files in the specified directory that have names ending with ".tsv" and stores the list of file paths in the variable traj_files.
+traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
+```
+
+## Loading the data in and giving meaningful names
+```{r}
+# Now we can actually load in the data. When we are loading in the data, we are also renaming out list to be the name of the individual groups and conditions 
+traj_data_list <- list()
+
+for (file_path in traj_files) {
+  # Load the data from the file
+  traj_data <- process_qtm_tsv(file_path)
+  
+  # Extract the group number and condition from the filename
+  group_number <- sub(".*group([0-9]+).*\\.tsv", "\\1", basename(file_path))
+  condition <- traj_data$metadata$condition
+  
+  # Create a unique identifier for the combination of group number and condition
+  group_condition_identifier <- paste0("group", group_number, "_", condition)
+  
+  # Check if a dataframe with this identifier already exists in the list
+  if (group_condition_identifier %in% names(traj_data_list)) {
+    # If it exists, append the data to the existing dataframe
+    traj_data_list[[group_condition_identifier]]$data <- rbind(traj_data_list[[group_condition_identifier]]$data, traj_data$data)
+  } else {
+    # If it doesn't exist, create a new dataframe and add it to the list
+    traj_data_list[[group_condition_identifier]] <- traj_data
+  }
+}
+
+# Now, traj_data_list contains individual lists for each unique combination of group number and condition
+```
+
+## Adding condition and group columns, so we can have nice individual dataframes later on
+```{r}
+traj_data_List <- lapply(traj_data_list, function(x) {
+  # Add condition and group information to the data frame
+  x$data$condition <- x$metadata$condition
+  
+  # Set x$data$group to be the list name
+  x$data$group <- basename(file_path)
+  
+  return(x)
+})
+```
+
+## So up until now the lists have been in one dataframe, so lets split them into multiple dataframes!
+```{r}
+library(dplyr)
+
+# Assuming traj_data_list is a list of data frames with both 'data' and 'metadata'
+for (i in seq_along(traj_data_list)) {
+  x <- traj_data_list[[i]]
+  
+  # Check if 'data' and 'metadata' components exist in each list element
+  if (!all(c("data", "metadata") %in% names(x))) {
+    warning("List element does not have 'data' and/or 'metadata'. Skipping.")
+    next
+  }
+  
+  # Extract condition and group information from the file path
+  file_path <- names(traj_data_list)[i]
+  condition <- sub(".*group[0-9]+_([^_\\.]+).*", "\\1", file_path)
+  group_number <- sub(".*group([0-9]+).*", "\\1", file_path)
+  
+  # Add condition and group information to the data frame
+  x$data$condition <- condition
+  x$data$group <- paste0("group", group_number)
+  
+  # Create a new data frame with the processed data and name it
+  new_df_name <- paste0("group", group_number, "_", condition)
+  assign(new_df_name, x$data)
+}
+
+```
+
+
+## Turning condition and group into factors and ensuring all marker names are not the same
+```{r}
+# Get a list of objects in the global environment
+all_objects <- ls()
+
+ # regex
+regex_pattern <- "^group([0-9]|1[0-3])_"
+
+# Filter objects that match the pattern
+group_objects <- grep(regex_pattern, all_objects, value = TRUE)
+
+# Loop through each object and apply the operations
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+  
+  # Check if 'condition' and 'group' columns exist
+  if (!all(c("condition", "group") %in% names(df))) {
+    warning(paste("Data frame", df_name, "does not have 'condition' and/or 'group' columns. Skipping."))
+    next
+  }
+  
+  # Add factors for condition and group
+  df$condition <- factor(df$condition)
+  df$group <- factor(df$group)
+  
+  # Print the data frame name
+  cat("Data frame:", df_name, "\n")
+  
+  # Print the first few rows of the data frame
+  print(head(df))
+  
+  # Ensure all marker names are the same
+  marker_names <- unique(df %>% select(contains("_x")) %>% names() %>% stri_replace_last_regex("_x", ""))
+  
+  assertthat::assert_that(
+    all(marker_names == traj_labels$traj_names),
+    msg = paste("Not all marker names are the same in Data frame", df_name)
+  )
+  
+  cat("\n")
+}
+```
+
+## Going from wide format to long format
+```{r}
+# Get a list of objects in the global environment
+all_objects <- ls()
+
+# Define a regular expression to match group identifiers followed by a number between 0 and 13
+regex_pattern <- "^group([0-9]|1[0-3])_"
+
+# Filter objects that match the pattern
+group_objects <- grep(regex_pattern, all_objects, value = TRUE)
+
+# Loop through each object and apply the operations
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+  
+  # Check if 'condition' and 'group' columns exist
+  if (!all(c("condition", "group") %in% names(df))) {
+    warning(paste("Data frame", df_name, "does not have 'condition' and/or 'group' columns. Skipping."))
+    next
+  }
+  
+  # Pivot the data
+  df <- df %>% 
+    pivot_longer(
+      cols = contains("_x") | contains("_y") | contains("_z"),
+      cols_vary = "slowest",
+      names_to = "marker",
+      values_to = "value"
+    ) %>%
+    mutate(
+      subject = stri_replace_first_regex(marker, "^([AB])_.*", "$1"),
+      axis = stri_extract_last_regex(marker, "[xyz]$"),
+      marker = stri_replace_first_regex(marker, "^[AB]_([a-zA-Z_]+)_[xyz]$", "$1")
+    ) %>%
+    # Move axes to columns
+    pivot_wider(
+      names_from = axis,
+      values_from = value
+    )
+  
+  # Assign the modified data frame back to the original variable
+  assign(df_name, df)
+  
+  # Print the data frame name
+  cat("Data frame:", df_name, "\n")
+  
+  # Print the first few rows of the pivoted data frame
+  print(head(df))
+  
+  cat("\n")
+}
+```
+
+### PLAYING WITH RAW DATA HEHEHEHE ####
+
+```{r INSTALLING}
+install.packages("plotly")
+library(plotly)
+```
+
+
+
