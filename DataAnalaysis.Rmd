@@ -17,6 +17,9 @@ knit: (function(inputFile, encoding) {
       encoding = encoding,
       output_dir = "html.file",
       output_file = "DataAnalysis.html"))})
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setuP}
@@ -24,7 +27,8 @@ knit: (function(inputFile, encoding) {
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
 
-Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
+Here i am just loading the packages and setting up our working
+directory. I am also specifying, which group we are looking at.
 
 ```{r loading packages}
 pacman::p_load(
@@ -51,8 +55,12 @@ if (basename(wd) != "PerceptionActionExam") {
 # set the directory for the data
 # note, path_home() will return the path to your home directory
 # your home directory is the one that contains your documents, downloads, etc.
+# data_dir <- path_home() %>% 
+#   path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")  #Nadia
+
+
 data_dir <- path_home() %>% 
-  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs")
+  path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") #Katharina
 
 # set your study group
 group_number <- 8
@@ -70,8 +78,11 @@ conditions <- list(
 source("Functions.R")
 ```
 
-
-And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
+And so, some more boring stuff...This is just getting the labels so we
+can make sure that the tracked markers match up with what we expected,
+really, this shouldn't go wrong, but if you don't check this kind of
+thing you'll end up scratching your head later wondering why everything
+broke.
 
 ```{r}
 # load the labels from the XML file
@@ -112,15 +123,22 @@ traj_labels <- data.frame(
   stringsAsFactors = FALSE
 )
 
+#deleting the files that we wont use anymore, so the workspace isn't cluttered
 rm(xmlfile, traj_names, traj_colors)
 ```
 
-Finally loading in data hehehe (insert elmo meme with fire in the background)
+Finally loading in data hehehe (insert elmo meme with fire in the
+background)
 
-Aditionally, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
+Additionally, this code is transforming data from a wide format, where
+each marker's x, y, and z coordinates are in separate columns, to a long
+format where all the coordinates are in a single column. It then adds
+more information about each observation (subject, axis, and marker)
+before pivoting it back to a wide format.
+
 ```{r}
 ## this loads in all the files
-#traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
+traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
 ```
 
 ```{r 'Load Trajectory Data'}
@@ -193,9 +211,13 @@ unique(traj_data$marker)
 
 # Trim the trajectories
 
-Here's where you cut the start and ends off of the trajectores, this is useful for example when you know that there's some setup time or a delay from recording start to end, or if you just want to look at a specific section of the data.
+Here's where you cut the start and ends off of the trajectores, this is
+useful for example when you know that there's some setup time or a delay
+from recording start to end, or if you just want to look at a specific
+section of the data.
 
-If you set up the conditions correctly in the setup section, then you can just run this cell and it will crop the data for you.
+If you set up the conditions correctly in the setup section, then you
+can just run this cell and it will crop the data for you.
 
 ```{r 'Crop trajectory data'}
 
@@ -233,7 +255,7 @@ traj_data %>%
 ```{r}
 ## Filtering out custom condition
 traj_data <- traj_data %>% 
-  dplyr::filter(condition %in% c("leadfollow", "followlead")) ## a bit confused why this works
+  dplyr::filter(condition %in% c("leadfollow", "followlead", "jointlead")) ## a bit confused why this works
 
 ## Checking to see if the filtering worked :)
 traj_data %>%
@@ -242,11 +264,14 @@ traj_data %>%
 
 # Inspect the data
 
-I've included some ways here of inspecting the data to see if there are any obvious problems.
+I've included some ways here of inspecting the data to see if there are
+any obvious problems.
 
 ## Check for large jumps in trajectory data
 
-This is a simple check to see if there are any large jumps in the data, this can indicate that there are some label errors (e.g. label `hand_left` became label `hand_right`), or that the data is just bad.
+This is a simple check to see if there are any large jumps in the data,
+this can indicate that there are some label errors (e.g. label
+`hand_left` became label `hand_right`), or that the data is just bad.
 
 ```{r 'Check for large jumps in trajectory data'}
 # we want to check for large jumps in the data
@@ -299,9 +324,12 @@ ggsave(
 
 # Check for NAs
 
-Specifically, this checks how much of a given trajectory is `NA` values and how long the longest sequence of `NA` values is. This can be useful for deciding whether to discard a marker or not.
+Specifically, this checks how much of a given trajectory is `NA` values
+and how long the longest sequence of `NA` values is. This can be useful
+for deciding whether to discard a marker or not.
 
-*Remember, you'll want to make sure that both subject A and B have at least one good quality matching marker.*
+*Remember, you'll want to make sure that both subject A and B have at
+least one good quality matching marker.*
 
 ```{r 'Get information about NAs'}
 
@@ -373,16 +401,15 @@ ggsave(
 
 ## Note to self: This is probably, where will have to look at the different groups and check for NA's aka markers that haven't been labeled. Hopefully there isn't too many NA's and we can go straight to the analysis part.
 
-TL:DR;
-There is a problem with group 7 and 10
-There is a problem with loading all the data files in.
-I will continue with data analysis, so we can ask Peter
---------------------------------------------------------
+TL:DR; There is a problem with group 7 and 10 There is a problem with
+loading all the data files in. I will continue with data analysis, so we
+can ask Peter --------------------------------------------------------
 
 # Pick your poison
 
-You can choose one or more markers and put them in the `markers_of_interest` variable below. This will
-then be used for the rest of the analysis.
+You can choose one or more markers and put them in the
+`markers_of_interest` variable below. This will then be used for the
+rest of the analysis.
 
 ```{r 'Choose markers of interest'}
 # we want to choose the markers of interest
@@ -405,8 +432,9 @@ selected_traj_data <- traj_data %>%
 
 # Gap filling
 
-Now that we're left with mainly the data we want to work with, we can do some gap filling to eliminate
-any `NA` values, just beware that it can't fill NAs at the start or end of the data.
+Now that we're left with mainly the data we want to work with, we can do
+some gap filling to eliminate any `NA` values, just beware that it can't
+fill NAs at the start or end of the data.
 
 ```{r 'Gap fill trajectory data'}
 # we are only going to do a linear gap fill, it's not elegant, but it works
@@ -473,24 +501,31 @@ ggsave(
 
 ```
 
-## ICA ##
+## ICA
 
-We will do dimensionality reduction with ICA  using the r package fastICA
+We will do dimensionality reduction with ICA using the r package fastICA
 
-https://www.rdocumentation.org/packages/fastICA/versions/1.2-4/topics/fastICA
-https://cran.r-project.org/web/packages/iTensor/vignettes/iTensor-1.html 
+<https://www.rdocumentation.org/packages/fastICA/versions/1.2-4/topics/fastICA>
+<https://cran.r-project.org/web/packages/iTensor/vignettes/iTensor-1.html>
 
-In short ICA attempts to ‘un-mix’ the data by estimating an un-mixing matrix W where XW = S.
+In short ICA attempts to 'un-mix' the data by estimating an un-mixing
+matrix W where XW = S.
 
-Under this generative model the measured ‘signals’ in X will tend to be `more Gaussian' than the source components (in S) due to the Central Limit Theorem. Thus, in order to extract the independent components/sources we search for an un-mixing matrix W that maximizes the non-gaussianity of the sources.
+Under this generative model the measured 'signals' in X will tend to be
+\`more Gaussian' than the source components (in S) due to the Central
+Limit Theorem. Thus, in order to extract the independent
+components/sources we search for an un-mixing matrix W that maximizes
+the non-gaussianity of the sources.
 
-In FastICA, non-gaussianity is measured using approximations to neg-entropy () which are more robust than kurtosis-based measures and fast to compute.
+In FastICA, non-gaussianity is measured using approximations to
+neg-entropy () which are more robust than kurtosis-based measures and
+fast to compute.
 
 We need to do the following things in order to do ICA
 
-1. Convert dataframe to matrix
-2. Apply fastICA
-3. Plotting
+1.  Convert dataframe to matrix
+2.  Apply fastICA
+3.  Plotting
 
 ## Am i supposed to do this on one marker or multiple markers?
 
@@ -499,11 +534,11 @@ followlead_8 <- selected_traj_data %>%
   dplyr::filter(condition == "followlead") 
 ```
 
-
-```{Convert dataframe to matrix}
-## dataframe with hand_right marker being converted to matrix
+```{r Convert dataframe to matrix}
+#dataframe with hand_right marker being converted to matrix
 x <- data.matrix(followlead_8) 
 ```
+
 ```{r apply ICA}
 ## We should try different functions
 a <- fastICA(x, 3, alg.typ = "parallel", fun = "logcosh", alpha = 1,
@@ -519,7 +554,6 @@ independent_components <- a$S # OH MAH GOD I UNDERSTAND NOTHITNREFD
 
 independent_components <- as.data.frame(independent_components)
 ```
-
 
 ```{r plotting independent components}
 par(mfrow = c(1, 3)) # Set up a 1x2 plotting grid for two components
@@ -544,5 +578,3 @@ for (i in 1:2) {
   plot(x[, i], type = "l", main = paste("Original Data Dimension", i), ylab = "Amplitude", xlab = "Time")
 }
 ```
-
-

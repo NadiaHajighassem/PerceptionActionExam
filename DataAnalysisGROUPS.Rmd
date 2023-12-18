@@ -22,6 +22,10 @@ knit: (function(inputFile, encoding) {
 ```{r setuP}
 ## Setup chunk
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
+
+#Aesthetic setup
+theme_set(theme_ipsum())
+bar_colour <- "#0e3b85"
 ```
 
 Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
@@ -39,7 +43,8 @@ pacman::p_load(
   "conflicted",
   "Rcpp",
   "future",
-  "fastICA"
+  "fastICA",
+  "hrbrthemes"
 )
 
 ## Making sure we are in the right directory
@@ -51,11 +56,11 @@ if (basename(wd) != "PerceptionActionExam") {
 # set the directory for the data
 # note, path_home() will return the path to your home directory
 # your home directory is the one that contains your documents, downloads, etc.
-data_dir <- path_home() %>% 
-  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
-
 #data_dir <- path_home() %>% 
- # path("Desktop","UNI", "Perception & Action", "Exam", "data", "tsvs") ## Katharina's path
+#  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
+
+data_dir <- path_home() %>% 
+  path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 # The available conditions and their start and end frame indices
@@ -125,6 +130,7 @@ traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
 ```
 
 ## Loading the data in and giving meaningful names
+
 ```{r}
 # Now we can actually load in the data. When we are loading in the data, we are also renaming out list to be the name of the individual groups and conditions 
 traj_data_list <- list()
@@ -153,10 +159,10 @@ for (file_path in traj_files) {
 # Now, traj_data_list contains individual lists for each unique combination of group number and condition
 ```
 
-
 ## Adding condition and group columns, so we can have nice individual dataframes later on
+
 ```{r}
-traj_data_List <- lapply(traj_data_list, function(x) {
+traj_data_list <- lapply(traj_data_list, function(x) {
   # Add condition and group information to the data frame
   x$data$condition <- x$metadata$condition
   
@@ -168,6 +174,7 @@ traj_data_List <- lapply(traj_data_list, function(x) {
 ```
 
 ## So up until now the lists have been in one dataframe, so lets split them into multiple dataframes!
+
 ```{r}
 library(dplyr)
 
@@ -197,8 +204,8 @@ for (i in seq_along(traj_data_list)) {
 
 ```
 
-
 ## Turning condition and group into factors and ensuring all marker names are not the same
+
 ```{r}
 # Get a list of objects in the global environment
 all_objects <- ls()
@@ -243,6 +250,7 @@ for (df_name in group_objects) {
 ```
 
 ## Going from wide format to long format
+
 ```{r}
 # Get a list of objects in the global environment
 all_objects <- ls()
@@ -296,4 +304,212 @@ for (df_name in group_objects) {
 }
 ```
 
+## NA checking
 
+For the most accurate analysis we want to include the following markers: Head, both hands and elbows, and chest. Before proceeding we check for NA's to verify none of these markers have too many NAs.
+
+```{r}
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that start with "group" followed by a number and underscore
+group_dataframes <- grep("^group\\d+_", objects, value = TRUE)
+
+# Iterate over the matching dataframes and apply the operation
+for (df_name in group_dataframes) {
+  df <- get(df_name)  # Get the dataframe
+  
+  # Identify columns with NAs
+  na_columns <- colnames(df)[colSums(is.na(df)) > 0]
+  
+  # Select "marker" column and columns with NAs
+  columns_to_summarize <- c("marker", na_columns)
+  
+  result <- df %>%
+    select(all_of(columns_to_summarize)) %>%
+    group_by(marker) %>%
+    summarise(across(everything(), ~ sum(is.na(.)))) %>%
+    arrange(across("x"))
+  
+  print(result)
+}
+
+```
+
+## Visualising the NAs
+
+```{r}
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that start with "group" followed by a number and underscore
+group_dataframes <- grep("^group\\d+_", objects, value = TRUE)
+
+# Iterate over the matching dataframes and apply the operation
+for (df_name in group_dataframes) {
+  df <- get(df_name)  # Get the dataframe
+  
+  # Identify columns with NAs
+  na_columns <- colnames(df)[colSums(is.na(df)) > 0]
+  
+  # Select "marker" column and columns with NAs
+  columns_to_summarize <- c("marker", na_columns)
+  
+  result <- df %>%
+    select(all_of(columns_to_summarize)) %>%
+    group_by(marker) %>%
+    summarise(across(everything(), ~ sum(is.na(.)))) %>%
+    arrange(across("x"))
+  
+  # Plotting
+  p <- ggplot(result, aes(x = marker, y = x)) +
+    geom_bar(stat = "identity") +
+    labs(title = df_name, x = "Marker", y = "Number of NA")+
+    theme_minimal()+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print each plot
+  print(p)
+}
+
+```
+
+```{r}
+##JOINT LEAD COMBINED PLOT##
+
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that end with "_JointLead"
+joint_lead_dataframes <- grep("_jointlead$", objects, value = TRUE)
+
+# Create an empty list to store dataframes
+df_list <- list()
+
+# Iterate over the matching dataframes and store them in the list
+for (df_name in joint_lead_dataframes) {
+  df <- get(df_name)  # Get the dataframe
+  df_list[[df_name]] <- df
+}
+
+# Combine dataframes into a single dataframe with an additional 'group' column
+combined_df <- bind_rows(df_list, .id = "group")
+
+# Identify columns with NAs
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+
+# Select "marker" column and columns with NAs
+columns_to_summarize <- c("marker", na_columns, "group")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  select(all_of(columns_to_summarize)) %>%
+  group_by(group, marker) %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  arrange(across("marker"))
+
+# Plotting
+p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Combined JointLead Dataframes Total NA's", x = "Marker", y = "Number of NA") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_discrete(name = "Group")
+
+# Print the combined plot
+print(p)
+
+##LEADFOLLOW COMBINED PLOT##
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that end with "_leadfollow"
+joint_lead_dataframes <- grep("_leadfollow$", objects, value = TRUE)
+
+# Create an empty list to store dataframes
+df_list <- list()
+
+# Iterate over the matching dataframes and store them in the list
+for (df_name in joint_lead_dataframes) {
+  df <- get(df_name)  # Get the dataframe
+  df_list[[df_name]] <- df
+}
+
+# Combine dataframes into a single dataframe with an additional 'group' column
+combined_df <- bind_rows(df_list, .id = "group")
+
+# Identify columns with NAs
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+
+# Select "marker" column and columns with NAs
+columns_to_summarize <- c("marker", na_columns, "group")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  select(all_of(columns_to_summarize)) %>%
+  group_by(group, marker) %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  arrange(across("marker"))
+
+# Plotting
+p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Combined LeadFollow Dataframes Total NA's", x = "Marker", y = "Number of NA") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_discrete(name = "Group")
+
+# Print the combined plot
+print(p)
+
+
+##COMBINED FOLLOWLEAD SETS ##
+
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that end with "_followlead"
+joint_lead_dataframes <- grep("_followlead$", objects, value = TRUE)
+
+# Create an empty list to store dataframes
+df_list <- list()
+
+# Iterate over the matching dataframes and store them in the list
+for (df_name in joint_lead_dataframes) {
+  df <- get(df_name)  # Get the dataframe
+  df_list[[df_name]] <- df
+}
+
+# Combine dataframes into a single dataframe with an additional 'group' column
+combined_df <- bind_rows(df_list, .id = "group")
+
+# Identify columns with NAs
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+
+# Select "marker" column and columns with NAs
+columns_to_summarize <- c("marker", na_columns, "group")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  select(all_of(columns_to_summarize)) %>%
+  group_by(group, marker) %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  arrange(across("marker"))
+
+# Plotting
+p <- ggplot(result, aes(x = marker, y = x, fill = as.factor(group))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Combined FollowLead Dataframes total NA's", x = "Marker", y = "Number of NA") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_discrete(name = "Group")
+
+# Print the combined plot
+print(p)
+```
+
+Unfortunately, the elbow markers have a lot of NA's. According to our plots, "head_top" is consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers.
+
+## Euclidean distance
+
+## Gap-filling
