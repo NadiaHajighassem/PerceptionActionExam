@@ -158,10 +158,7 @@ for (file_path in traj_files) {
 # Now, traj_data_list contains individual lists for each unique combination of group number and condition
 ```
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 ## Adding condition and group columns, so we can have nice individual dataframes later on
 ```{r}
 traj_data_List <- lapply(traj_data_list, function(x) {
@@ -304,7 +301,7 @@ for (df_name in group_objects) {
 }
 ```
 
-<<<<<<< HEAD
+
 ### PLAYING WITH RAW DATA HEHEHEHE ####
 
 ```{r INSTALLING}
@@ -312,7 +309,4 @@ install.packages("plotly")
 library(plotly)
 ```
 
-
-=======
->>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 
