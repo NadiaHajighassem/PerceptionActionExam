@@ -24,8 +24,11 @@ knit: (function(inputFile, encoding) {
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
 
+<<<<<<< HEAD
 ## Preprocessing ##
 
+=======
+>>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
 
 ```{r loading packages}
@@ -155,6 +158,10 @@ for (file_path in traj_files) {
 # Now, traj_data_list contains individual lists for each unique combination of group number and condition
 ```
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 ## Adding condition and group columns, so we can have nice individual dataframes later on
 ```{r}
 traj_data_List <- lapply(traj_data_list, function(x) {
@@ -297,6 +304,7 @@ for (df_name in group_objects) {
 }
 ```
 
+<<<<<<< HEAD
 ### PLAYING WITH RAW DATA HEHEHEHE ####
 
 ```{r INSTALLING}
@@ -305,4 +313,6 @@ library(plotly)
 ```
 
 
+=======
+>>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 
