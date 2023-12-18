@@ -24,11 +24,9 @@ knit: (function(inputFile, encoding) {
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
 
-<<<<<<< HEAD
+
 ## Preprocessing ##
 
-=======
->>>>>>> 3faa86f50fceb5a4c09c588fd15ad73332fefc4e
 Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
 
 ```{r loading packages}
