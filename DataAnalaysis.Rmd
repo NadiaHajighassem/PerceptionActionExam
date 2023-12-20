@@ -228,8 +228,8 @@ traj_data %>%
     n_obs = n()
   ) %>%
   print(n = 100)
-
 ```
+
 
 ```{r}
 ## Filtering out custom condition
@@ -526,9 +526,7 @@ for (df_name in group_objects) {
   cat("\n")
 }
 ```
-
-
-
+z
 
 ## ICA
 

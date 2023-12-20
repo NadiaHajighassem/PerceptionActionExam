@@ -24,7 +24,7 @@ knit: (function(inputFile, encoding) {
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
 
-## Preprocessing ##
+## Preprocessing
 
 Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
 
@@ -41,7 +41,10 @@ pacman::p_load(
   "conflicted",
   "Rcpp",
   "future",
-  "fastICA"
+  "fastICA",
+  "groupICA",
+  "dtw",
+  "dplyr"
 )
 
 ## Making sure we are in the right directory
@@ -127,6 +130,7 @@ traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
 ```
 
 ## Loading the data in and giving meaningful names
+
 ```{r}
 # Now we can actually load in the data. When we are loading in the data, we are also renaming out list to be the name of the individual groups and conditions 
 traj_data_list <- list()
@@ -155,8 +159,8 @@ for (file_path in traj_files) {
 # Now, traj_data_list contains individual lists for each unique combination of group number and condition
 ```
 
-
 ## Adding condition and group columns, so we can have nice individual dataframes later on
+
 ```{r}
 traj_data_list <- lapply(traj_data_list, function(x) {
   # Add condition and group information to the data frame
@@ -170,6 +174,7 @@ traj_data_list <- lapply(traj_data_list, function(x) {
 ```
 
 ## So up until now the lists have been in one dataframe, so lets split them into multiple dataframes!
+
 ```{r}
 library(dplyr)
 
@@ -199,8 +204,8 @@ for (i in seq_along(traj_data_list)) {
 
 ```
 
-
 ## Turning condition and group into factors and ensuring all marker names are not the same
+
 ```{r}
 # Get a list of objects in the global environment
 all_objects <- ls()
@@ -245,6 +250,7 @@ for (df_name in group_objects) {
 ```
 
 ## Going from wide format to long format
+
 ```{r}
 # Get a list of objects in the global environment
 all_objects <- ls()
@@ -298,26 +304,171 @@ for (df_name in group_objects) {
 }
 ```
 
-### PLAYING WITH RAW DATA HEHEHEHE ####
+### Plotting the data in order to trim the trajectories (fail)
 
-```{r for loop that plots x-coordinates for all markers in all groups}
-## Making a for loop that plots x-coordinates for all markers in all groups
-for (df_name in group_objects) {
-  # Extract the current data frame
-  df <- get(df_name)
+```{r installing plotly}
+## Downloading plotly here because it masks some of the functions used earlier, if i download it in the beginning
+install.packages("plotly")
+library(plotly)
+```
+
+```{r subsetting dataframes}
+group8_leadfollow_sub <- group8_leadfollow %>%
+   dplyr::filter(elapsed_time <= 3)
+```
+
+```{r making subject columns into a factor, so we can color by subject later}
+## checking class
+class(group8_leadfollow_sub$subject)
+## converting into factor
+group8_leadfollow_sub$subject <- as.factor(group8_leadfollow_sub$subject)
+```
+
+```{r plotting in 3d}
+## Plotting in 3D again, but just with time
+ fig <- plotly::plot_ly(group8_leadfollow_sub, 
+                x = ~x, 
+                y = ~y, 
+                z = ~z, 
+                type = "scatter3d", 
+                mode = "markers", 
+                size = 2,
+                frame = ~elapsed_time,
+                marker = list(size = 4), ## Adjusting the marker size
+                color = ~subject,
+                colors = c("pink", "steelblue4"))
+                
+ fig <- fig %>% plotly::layout(
+   scene = list(
+     aspectmode = "cube"),
+  xaxis = list(title = "X-axis"), 
+  yaxis = list(title = "Y-axis"),
+  zaxis = list(title = "Z-axis"))
+ 
+fig <- fig %>% ## adding and changing text
+  plotly::layout(title = list(text = "Group 8", y = 0.9), 
+                 font=list(size=15, family = "Times new roman"),
+                 legend = list(title = list(text = "markers")))
+ 
+ fig
+```
+
+We tried trimming the trajectories by plotting the data in 3d, but due to constraint in computational power, we decided to not proceed with this option, instead we use the linear gap-filling plots to trim the trajectories.
+
+## NA checking
+
+For the most accurate analysis we want to include the following markers: Head, both hands and elbows, and chest. Before proceeding we check for NA's to verify none of these markers have too many NAs.
+
+```{r}
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Filter objects that start with "group" followed by a number and underscore
+group_dataframes <- grep("^group\\d+_", objects, value = TRUE)
+
+# Iterate over the matching dataframes and apply the operation
+for (df_name in group_dataframes) {
+  df <- get(df_name)  # Get the dataframe
   
-  # Create ggplot
-  plot <- ggplot(df, aes(x = x, y = marker)) +
-    geom_point() +
-    ggtitle(paste("Group:", df$group[1], "Condition:", df$condition[1]))
+  # Identify columns with NAs
+  na_columns <- colnames(df)[colSums(is.na(df)) > 0]
   
-  # Print the plot
-  print(plot)
+  # Select "marker" column and columns with NAs
+  columns_to_summarize <- c("marker", na_columns)
+  
+  result <- df %>%
+    select(all_of(columns_to_summarize)) %>%
+    group_by(marker) %>%
+    summarise(across(everything(), ~ sum(is.na(.)))) %>%
+    arrange(across("x"))
+  
+  print(result)
 }
 ```
 
-### Euclidaen distance shit
-```{r Euclidaen distance plots }
+## NA checking - we noticed that head_top didn't have a lot of NA's, so we checked whether or not it was the extra marker for A
+
+```{r checking to see which markers B have}
+  group0_jointlead %>%
+  dplyr::filter(subject == "B") %>%
+  distinct(marker)
+
+## Subject B has no head_top heheheheheee
+```
+
+## Visualising the NAs
+
+```{r}
+# Get a list of objects in the workspace
+objects <- ls()
+
+# Process Joint Lead Dataframes
+joint_lead_dataframes <- grep("_jointlead$", objects, value = TRUE)
+joint_lead_list <- lapply(joint_lead_dataframes, get)
+joint_lead_combined <- bind_rows(joint_lead_list, .id = "group") %>%
+  mutate(type = "joint_lead")
+
+# Process Lead Follow Dataframes
+lead_follow_dataframes <- grep("_leadfollow$", objects, value = TRUE)
+lead_follow_list <- lapply(lead_follow_dataframes, get)
+lead_follow_combined <- bind_rows(lead_follow_list, .id = "group") %>%
+  mutate(type = "lead_follow")
+
+# Combine both datasets
+combined_df <- bind_rows(joint_lead_combined, lead_follow_combined)
+
+# Identifying columns with NAs and processing
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+columns_to_summarize <- c("marker", na_columns, "group", "type")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  select(all_of(columns_to_summarize)) %>%
+  group_by(group, marker, type) %>%
+  summarise(across(everything(), ~ sum(is.na(.))), .groups = "drop") %>%
+  arrange(marker, type)
+
+
+# Plotting with facet wrap
+p <- ggplot(result, aes(x = marker, y = x, fill = marker)) +
+  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
+  labs(title = "NA's in Combined Dataframes", x = "Marker", y = "Number of NA") +
+  facet_wrap(~ type) +
+  coord_flip()
+
+# Print the combined plot
+print(p)
+```
+
+```{r}
+# Now we can get the longest sequence of NAs for each marker
+longest_na_seq <- combined_df %>% 
+  group_by(condition, subject, marker) %>%
+  summarise_at(
+    vars(x, y, z),
+    ~ max(rle(is.na(.))$lengths)
+  )
+
+# plot to check if it is acceptable
+longest_na_seq %>% 
+  ggplot(aes(x = marker, y = x, fill=marker, group=subject)) +
+  geom_col(
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  facet_wrap(c(~subject, ~condition)) +
+  labs(
+    x = "Marker",
+    y = "Longest NA sequence",
+    title = "Longest NA sequence by marker"
+  )
+```
+
+Unfortunately, the elbow markers have a lot of NA's. According to our plots, the head markers are consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers. However, the head_top is only present for participant A, and therefore we must choose either head_left or head_right. Since head_right has fewer NA's and the longest sequence is also smaller, we proceed with head_right
+
+### Euclidean distance
+
+```{r Euclidean distance plots for each marker}
 for (df_name in group_objects) {
   # Extract the current data frame
   df <- get(df_name)
@@ -354,4 +505,377 @@ for (df_name in group_objects) {
 }
 ```
 
+```{r euclidean_distance_selected_markers}
+##ONLY SPECIFIC LABELS##
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
 
+  # Calculate the euclidean distance between each marker (using x, y, z)
+  # We will do this by subject, marker, and axis
+  marker_distances <- df %>% 
+    group_by(subject, marker) %>%
+    arrange(index) %>%
+    mutate(
+      diff_x = x - dplyr::lag(x, 1),
+      diff_y = y - dplyr::lag(y, 1),
+      diff_z = z - dplyr::lag(z, 1)
+    ) %>%
+    mutate(
+      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+    )%>%
+    # Filter only the specified markers
+    dplyr::filter(marker %in% c("head_right", "hand_right", "hand_left", "chest"))
+
+
+  # Plot the series for each marker, and see if anything stands out
+  plot <- marker_distances %>% 
+    ggplot(aes(x = index, y = euclidean_distance)) +
+    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
+    theme_minimal() +
+    facet_wrap(~condition + subject) +
+    labs(
+      x = "Index",
+      y = "Euclidean distance",
+      title = "Euclidean distance from the previous frame by marker",
+      subtitle = paste( df$group[1], "Condition:", df$condition[1])
+    )
+  
+  # Print the plot
+  print(plot)
+}
+```
+
+### Inspecting the raw data by plotting the x-coordinates
+
+```{r for loop that plots x-coordinates for all markers in all groups}
+## Making a for loop that plots x-coordinates for all markers in all groups
+for (df_name in group_objects) {
+  # Extract the current data frame
+  df <- get(df_name)
+  
+  # Create ggplot
+  plot <- ggplot(df, aes(x = x, y = marker)) +
+    geom_point() +
+    ggtitle(paste("Group:", df$group[1], "Condition:", df$condition[1]))
+  
+  # Print the plot
+  print(plot)
+}
+```
+
+## Choosing markers
+
+Before filling gaps, we specify the markers we wish to choose. As specified before, we choose chest, hands and head.
+
+```{r}
+# get the markers of interest
+markers_of_interest <- c(
+  "hand_right",
+  "head_right",
+  "hand_left",
+  "chest"
+)
+
+# now we can select the markers of interest
+selected_traj_data <- combined_df %>% 
+  dplyr::filter(marker %in% markers_of_interest)
+```
+
+```{r}
+#NA
+summarise_all(selected_traj_data, ~ sum(is.na(.)))
+selected_traj_data %>%
+  group_by(marker) %>%
+  summarise(na_count = sum(is.na(x)))
+
+#NON NA
+selected_traj_data %>%
+  group_by(marker) %>%
+  summarise(non_na_count = sum(!is.na(x)))
+
+```
+
+Our data is roughly 1/4 parts NA's; we proceed with linear gap filling to try and minimize this number.
+
+## Gap-filling
+
+```{r}
+# Assuming markers_of_interest is defined and has at least 4 elements
+for(n in 1:9){
+  for (sel_idx in 1:4) {
+  selected_traj_data <- combined_df %>% 
+  dplyr::filter(marker %in% markers_of_interest)
+  
+  # Plot a single marker's x, y, and z values before gap filling
+  plot_before <- selected_traj_data %>%
+    dplyr::filter(group == n) %>% 
+    dplyr::filter(marker == markers_of_interest[sel_idx]) %>%
+    ggplot(aes(x = elapsed_time, y = x, color=subject)) +
+    geom_line() +
+    facet_wrap(c(~condition)) +
+    labs(
+      x = "Elapsed time",
+      y = "Marker X position",
+      title = paste("Marker", markers_of_interest[sel_idx], "X position before gap filling", "group", n)
+    )
+  
+  print(plot_before)
+
+  ggsave(
+    plot_before,
+    filename = paste0(
+      "./results/marker_",
+      markers_of_interest[sel_idx],
+      "group",
+      n,
+      "_x_position_before_gap_filling.png"),
+    width = 10,
+    height = 10,
+    units = "cm",
+    dpi = 300
+  )
+
+  # Apply the linear gap fill function to each column, by condition
+  selected_traj_data <- selected_traj_data %>% 
+    group_by(condition, subject, marker) %>% 
+    mutate_at(
+      vars(x, y, z),
+      ~ gap_fill_linear(.)
+    )
+
+  # Plot a single marker's x, y, and z values after gap filling
+  plot_after <- selected_traj_data %>%
+    dplyr::filter(group == n) %>% 
+    dplyr::filter(marker == markers_of_interest[sel_idx]) %>%
+    ggplot(aes(x = elapsed_time, y = x, color = subject)) +
+    geom_line() +
+    facet_wrap(c(~condition)) +
+    labs(
+      x = "Elapsed time",
+      y = "Marker X position",
+      title = paste("Marker", markers_of_interest[sel_idx], "X position after gap filling", "group", n)
+    )
+  
+  print(plot_after)
+
+  ggsave(
+    plot_after,
+    filename = paste0(
+      "./results/marker_",
+      markers_of_interest[sel_idx],
+      "group",
+      n,
+      "_x_position_after_gap_filling.png"),
+    width = 10,
+    height = 10,
+    units = "cm",
+    dpi = 300
+  )
+  }
+}
+
+```
+
+Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
+
+\-\-\-\-\-\--
+
+#### ICA
+
+```{r Convert dataframe to matrix}
+## converting to matrix
+x <- data.matrix(group8_leadfollow)
+
+## removing NA's as a temporary solution
+x <- na.omit(x)
+```
+
+```{r}
+## filtering time
+group8_leadfollow_sub <- group8_leadfollow %>%
+  dplyr::filter(elapsed_time <= 5 )
+  
+## splitting dataframes by subject
+df_A <- group8_leadfollow_sub %>% dplyr::filter(subject == "A")
+df_B <- group8_leadfollow_sub %>% dplyr::filter(subject == "B")
+
+## making them into matrices
+df_A_x <- data.matrix(df_A) 
+df_b_x <- data.matrix(df_B) 
+
+## removing NA's 
+df_A_x <- na.omit(df_A_x) 
+df_b_x <- na.omit(df_b_x) 
+```
+
+```{r apply ICA}
+## for both subject in one dataframe
+a <- fastICA(x, 5, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+## for subject A
+A <- fastICA(df_A_x, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+## for subject B
+B <- fastICA(df_b_x, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+## Extracting the individual components
+A1 <- A$S
+B1 <- B$S
+
+## side note: neg-entropy is a way of measuring how much a distribution deviates from a Gaussian distribution. We want to maximize neg-entropy because it maximizes independence, which is the whole purpose of ICA.
+```
+
+```{r dynamic time warping}
+## limit reached
+dtw_result <- dtw::dtw(A1, B1, keep = TRUE)
+
+# Access the DTW distance
+dtw_distance <- dtw_result$distance
+
+# Print the DTW distance
+print(paste("DTW Distance:", dtw_distance))
+
+```
+
+```{r}
+window_size_samples <- 50
+
+
+  result <- dtw(
+          x = A1,
+          y = B1,
+          window.type = "none",
+          window.size = window_size_samples,
+          keep = TRUE
+        )
+```
+
+```{r}
+dtw(
+  x = A1,
+  y = B1,
+  dist.method = "Euclidean",
+  step.pattern = symmetric2,
+  window.type = "none",
+  keep.internals = FALSE,
+  distance.only = FALSE,
+  open.end = FALSE,
+  open.begin = FALSE,
+)
+```
+
+```{r saving the independent components into a dataframe}
+## Independent components yes no?!?!?!!
+independent_components <- a$S # OH MAH GOD I UNDERSTAND NOTHITNREFD
+
+independent_components <- as.data.frame(independent_components)
+```
+
+```{r plotting independent components}
+par(mfrow = c(1, 5)) # Set up a 1x2 plotting grid for two components
+## plotting the first independent component
+independent_components[, 1] %>%
+  plot()
+## plotting the second independent component
+independent_components[, 2] %>%
+  plot()
+## plotting the third independent component
+independent_components[, 3] %>%
+  plot()
+## plotting the fourth independent component
+independent_components[, 4] %>%
+  plot()
+## plotting the fifthindependent component
+independent_components[, 5] %>%
+  plot()
+
+
+
+i <- independent_components[, 1]
+
+ii <- independent_components[, 2]
+```
+
+#### DTW
+
+```{r}
+dtw(
+  x = A1,
+  y = B1,
+  step.pattern = symmetric2,
+  window.type = "none",
+  keep.internals = FALSE,
+  distance.only = FALSE,
+  open.end = FALSE,
+  open.begin = FALSE,
+)
+
+
+ result <- dtw(
+          x = A1,
+          y = B1,
+          window.type = "sakoechiba",
+          window.size = window_size_samples,
+          keep = TRUE
+        )
+
+
+
+# Assuming 'independent_components' is your time series data
+data("aami3a")
+ref <- window(aami3a,start=0,end=2)
+test <- window(aami3a,start=2.7,end=5)
+plot(dtw(test,ref,k=TRUE),type="two",off=1,match.lty=2,match.indices=20)
+
+
+```
+
+```{r}
+  result <- dtw(
+          x = cond_data[cond_data$subject == "A", axis],
+          y = cond_data[cond_data$subject == "B", axis],
+          window.type = "sakoechiba",
+          window.size = window_size_samples,
+          keep = TRUE
+        )
+      },
+      error = function(e) {
+        warning(paste(
+          "Error doing DTW, skipping...maybe try standardizing?",
+          "Condition:",
+          cond,
+          "Marker:",
+          sel_marker,
+          "Axis:",
+          axis,
+          "Length of A:",
+          length(cond_data[cond_data$subject == "A", axis]),
+          "Length of B:",
+          length(cond_data[cond_data$subject == "B", axis]),
+          "Error:",
+          e
+          )
+        )
+        result <- NULL
+      }
+    )
+    if (is.null(result)) {
+      message("Skipping...check warning messages at end of output")
+      next
+    }
+    results[[length(results) + 1]] <- list(
+      condition = cond,
+      marker = sel_marker,
+      axis = axis,
+      normalizedDistance = result$normalizedDistance,
+      distance = result$distance
+    )
+      
+```
