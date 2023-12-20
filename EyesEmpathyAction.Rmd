@@ -32,16 +32,19 @@ pacman::p_load(
 
 #Aesthetic setup
 theme_set(theme_ipsum())
-bar_colour <- "#0e3b85"
+global_fill_colour <- "#0e3b85"
+aesthetic_palette <- c("#624C40","#97986E","#CBAF9A","#93703B","#9E2825")
 ```
 
 # Pre-processing
 
-## Loading in Data and Cleaning
+## Empathy-Questionnaire
+
+### Loading in Data and Cleaning
 
 ```{r load_personality_data}
 #No 9 or 11 :) the data jumps.
-#Unknown data could be: A13, A1, A6
+#Unknown data could be: A1, A6
 personality_questionnaire <- read_csv('data/PercAct23_Mocap_personality_questionnaires.csv')%>% 
   dplyr::filter(`I was a participant in the Mocap workshop`=="Yep") %>%
   mutate(`Participant ID` = case_when(
@@ -50,78 +53,34 @@ personality_questionnaire <- read_csv('data/PercAct23_Mocap_personality_question
     `Participant ID` == "6b" ~ "B6",
     `Participant ID` == "12 A" ~ "A12",
     `Participant ID` == "B01" ~ "B1",
-    `Participant ID` == "A" ~ "?A?",
-    `Participant ID` == "nnn" ~ "?n?",
-    `Participant ID` == "H7" ~ "?h7?",
+    `Participant ID` == "A" ~ "A6",
+    `Participant ID` == "nnn" ~ "A1",
+    `Participant ID` == "H7" ~ "A13",
     TRUE ~ `Participant ID`  # If no match, keep the original value
-  )) %>% 
-    dplyr::filter(!grepl("\\?", `Participant ID`))   # Exclude rows with "?" in Participant DELETE AFTER IDENTIFY MISSING DATA
+  )) 
 
+empathy_questionnaire <- personality_questionnaire %>% 
+  select(
+    "Participant ID",
+    "Gender",
+    "Age",
+    starts_with("Question")
+  ) %>%
+  rename_with(~paste0("question:", str_replace_all(.x, "Question|\\[|\\]", "")), starts_with("Question"))
 
-
+empathy_questionnaire <- empathy_questionnaire %>%
+  mutate(across(starts_with("question:"), ~as.numeric(str_replace_all(., "[^0-9]", ""))))
 ```
 
-```{r load_subjective_data}
-subjective_questionnaire_A <- read_csv('data/PerAct23_Mocap_subjective_questionnaires.csv') %>% 
-  select(
-    -"Participant B ID", 
-    -ends_with("B_LeadFollow"), 
-    -ends_with("B_FollowLead"), 
-    -ends_with("B_JointLead"), 
-    -ends_with("Custom"), 
-    -"Describe the custom condition", 
-    -"Tidsstempel") %>% 
-  rename_all(
-    ~gsub("A_", "", .)) %>% 
-  rename(
-    "Participant ID" = "Participant A ID")
-
-  
-
-subjective_questionnaire_B <- read_csv('data/PerAct23_Mocap_subjective_questionnaires.csv') %>% 
-  select(
-    -"Participant A ID", 
-    -ends_with("A_LeadFollow"), 
-    -ends_with("A_FollowLead"), 
-    -ends_with("A_JointLead"), 
-    -ends_with("Custom"), 
-    -"Describe the custom condition", 
-    -"Tidsstempel")%>% 
-  rename_all(
-    ~gsub("B_", "", .)) %>% 
-  rename(
-    "Participant ID" = "Participant B ID")
-
-  
-subjective_questionnaire <- bind_rows(subjective_questionnaire_A,subjective_questionnaire_B)
-
-# #Making seperate dataframes for different conditions???
-# subjective_questionnaire_Leader <- subjective_questionnaire %>% 
-#   select(
-#     -ends_with("Follower"),
-#     -ends_with("JointLead"))
-# 
-# subjective_questionnaire_Follower <- subjective_questionnaire %>% 
-#     select(
-#     -ends_with("Leader"),
-#     -ends_with("JointLead"))
-# subjective_questionnaire_JointLead <- subjective_questionnaire %>% 
-#     select(
-#     -ends_with("Leader"),
-#     -ends_with("Follower"))
-
-survey_data <- merge(subjective_questionnaire, personality_questionnaire, by = "Participant ID")
-```
+## Eye movement data
 
 ```{r eye_data}
 
 ```
 
+## Motion Capture
+
 ```{r motion_data}
-
-```
-
-```{r final_data_merging}
 
 ```
 
@@ -129,19 +88,166 @@ survey_data <- merge(subjective_questionnaire, personality_questionnaire, by = "
 
 ```{r}
 #Gender plot
-survey_data %>% 
+personality_questionnaire %>% 
   ggplot(aes(x=Gender))+
-  geom_bar(fill= bar_colour)+
+  geom_bar(fill= global_fill_colour)+
   labs(title = "Distribution of Gender",
        x = "Gender",
        y = "Count")
   
 
 #Age plot
-survey_data %>% 
+personality_questionnaire %>% 
   ggplot(aes(x=Age))+
-  geom_bar(fill = bar_colour)+
+  geom_bar(fill = global_fill_colour)+
   labs(title = "Distribution of Age",
        x = "Age",
        y = "Count")
+```
+
+# Empathy scoring
+
+We start out by making a database for each question, its weight and whether it is reversed or not (counts negatively towards the final score.
+
+```{r}
+empathy_question_weights <- data.frame(
+  original_index = c("1",
+            "3",
+            "4",
+            "8",
+            "9",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "18",
+            "21",
+            "22",
+            "26",
+            "28",
+            "29",
+            "31",
+            "34",
+            "35",
+            "36",
+            "38",
+            "39"),
+  question = c("I can easily tell if someone else wants to enter a conversation.", 
+               "I really enjoy caring for other people.",
+               "I ﬁnd it hard to know what to do in a social situation.",
+               "I often ﬁnd it diﬃcult to judge if something is rude or polite.",
+               "In a conversation, I tend to focus on my own thoughts rather than on what my listener might be
+
+thinking.",
+               "I can pick up quickly if someone says one thing but means another.",
+               "It is hard for me to see why some things upset people so much.",
+               "I ﬁnd it easy to put myself in somebody else's shoes.",
+               "I am good at predicting how someone will feel.",
+               "I am quick to spot when someone in a group is feeling awkward or uncomfortable.",
+               "I can't always see why someone should have felt oﬀended by a remark.",
+               "I don't tend to ﬁnd social situations confusing.",
+               "Other people tell me I am good at understanding how they are feeling and what they are
+
+thinking.",
+               "I can easily tell if someone else is interested or bored with what I am saying.",
+               "Friends usually talk to me about their problems as they say that I am very understanding.",
+               "I can sense if I am intruding, even if the other person doesn't tell me.",
+               "Other people often say that I am insensitive, though I don't always see why.",
+               "I can tune into how someone else feels rapidly and intuitively.",
+               "I can easily work out what another person might want to talk about.",
+               "I can tell if someone is masking their true emotion.",
+               "I am good at predicting what someone will do.",
+               "I tend to get emotionally involved with a friend's problems."),
+  weight = c("",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             "",
+             ""),
+  reverse = c("no", 
+              "no",
+              "yes",
+              "yes",
+              "yes",
+              "no",
+              "yes",
+              "no",
+              "no",
+              "no",
+              "yes",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "yes",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no")
+)
+```
+
+Now we make a function for giving each participant an EQ score
+
+```{r}
+# Select columns that start with "question:"
+question_cols <- empathy_questionnaire %>%
+                 select(starts_with("question:"))
+
+# Assuming empathy_question_weights has the same column names as question_cols and a 'reverse' column
+columns_to_reverse <- empathy_question_weights$reverse == "yes"
+columns_to_reverse <- names(question_cols)[columns_to_reverse]
+
+# Copy the original dataframe
+empathy_questionnaire_reversed <- empathy_questionnaire
+
+# Apply the reversal only to the specified columns
+empathy_questionnaire_reversed[columns_to_reverse] <- 11 - empathy_questionnaire_reversed[columns_to_reverse]
+
+# Calculate the sum of the "question:" columns per row and add it as a new column
+empathy_questionnaire_reversed <- empathy_questionnaire_reversed %>%
+                                  rowwise() %>%
+                                  mutate(EQ_score = sum(c_across(starts_with("question:")), na.rm = TRUE)) %>%
+                                  ungroup()
+
+empathy_questionnaire$EQ_score <- empathy_questionnaire_reversed$EQ_score
+
+write_csv(empathy_questionnaire, "data/EmpathyQuestionnaireScored.csv")
+
+#Removing things from environment to decrease clutter :)
+rm(empathy_questionnaire_reversed, empathy_question_weights, question_cols, columns_to_reverse)
+```
+
+Plotting the scores
+
+```{r}
+empathy_questionnaire %>%
+  ggplot(aes(x=EQ_score)) +
+  geom_density(fill = global_fill_colour, alpha=0.7) +  # Adds color to the density plot
+  xlim(75,175)+
+  labs(title="Density Plot of EQ Scores", 
+       x="EQ Score", 
+       y="Density") +  # Add labels and title
+  theme(text = element_text(size=12))  # Adjusts the text size for readability
+
+
 ```
