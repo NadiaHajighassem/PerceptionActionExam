@@ -24,7 +24,7 @@ knit: (function(inputFile, encoding) {
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
 ```
 
-## Preprocessing
+## Pre-processing
 
 Here i am just loading the packages and setting up our working directory. I am also specifying, which group we are looking at.
 
@@ -44,7 +44,9 @@ pacman::p_load(
   "fastICA",
   "groupICA",
   "dtw",
-  "dplyr"
+  "dplyr",
+  "plotly",
+  "htmlwidgets"
 )
 
 ## Making sure we are in the right directory
@@ -56,11 +58,11 @@ if (basename(wd) != "PerceptionActionExam") {
 # set the directory for the data
 # note, path_home() will return the path to your home directory
 # your home directory is the one that contains your documents, downloads, etc.
-data_dir <- path_home() %>% 
-  path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
+# data_dir <- path_home() %>% 
+#   path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
 
-#data_dir <- path_home() %>% 
- # path("Desktop","UNI", "Perception & Action", "Exam", "data", "tsvs") ## Katharina's path
+data_dir <- path_home() %>%
+path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 # The available conditions and their start and end frame indices
@@ -304,56 +306,193 @@ for (df_name in group_objects) {
 }
 ```
 
-### Plotting the data in order to trim the trajectories (fail)
+## Trimming to 30 sec
 
-```{r installing plotly}
-## Downloading plotly here because it masks some of the functions used earlier, if i download it in the beginning
-install.packages("plotly")
-library(plotly)
+Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
+
+Our original dataframes have a frame every 0,003rd second, so in order to save computational power, we simplify the dataframe for visualisation. In this case we will have points every half second.
+
+```{r}
+# List objects in your environment that match the pattern
+matching_objects <- ls(pattern = "^group.*_(jointlead|leadfollow)$")
+
+# Create df_list by loading the matching dataframes
+df_list <- lapply(matching_objects, get)
+  
+# Create an empty list to store the simplified dataframes
+simplified_df_list <- list()
+
+# Iterate through the list of dataframes
+for (current_df in df_list) {
+  # Apply the transformation and store the simplified dataframe in a new list
+  simplified_df <- current_df %>%
+    group_by(subject, marker) %>%
+    slice(seq(1, n(), by = 151)) %>%
+    ungroup()
+  
+  # Add the simplified dataframe to the new list
+  simplified_df_list <- c(simplified_df_list, list(simplified_df))
+}
+
 ```
 
-```{r subsetting dataframes}
-group8_leadfollow_sub <- group8_leadfollow %>%
-   dplyr::filter(elapsed_time <= 3)
+Then we make 3d plots with included timeframe to identify the t-poses and thereby where our 30 second window starts.
+
+```{r}
+# Create an empty list to store the plots
+plot_list <- list()
+
+# Iterate through the simplified dataframes
+for (i in seq_along(simplified_df_list)) {
+  df_name <- names(simplified_df_list)[i]
+  df <- simplified_df_list[[i]]
+  
+  # Create the base plot
+  fig <- plot_ly(df, 
+                 x = ~x, 
+                 y = ~y, 
+                 z = ~z, 
+                 type = "scatter3d", 
+                 mode = "markers", 
+                 size = 2,
+                 frame = ~elapsed_time,
+                 marker = list(size = 4), ## Adjusting the marker size
+                 color = ~subject)
+  
+  fig <- fig %>% plotly::layout(
+    scene = list(
+      xaxis = list(title = "X-axis", range = c(-800, 800)), 
+      yaxis = list(title = "Y-axis", range = c(-800, 800)),
+      zaxis = list(title = "Z-axis", range = c(0, 1800)),
+      aspectmode = "manual",
+      aspectratio = list(x = 1, y = 1, z = 1)
+    ),
+    xaxis = list(title = "X-axis"), 
+    yaxis = list(title = "Y-axis"),
+    zaxis = list(title = "Z-axis"))
+  
+  fig <- fig %>% ## adding and changing text
+    plotly::layout(title = list(text = df_name, y = 0.9), 
+                   font=list(size=15, family = "Times new roman"),
+                   legend = list(title = list(text = "markers")))
+  
+  plot_list[[i]] <- fig
+}
+
+# Now plot_list contains all the plots for each simplified dataframe
+
+# Save each plot in plot_list as an HTML file
+for (i in seq_along(plot_list)) {
+  plot <- plot_list[[i]]
+  filename <- paste0("plot_", i, ".html")
+  saveWidget(plot, file = filename)
+}
 ```
 
-```{r making subject columns into a factor, so we can color by subject later}
-## checking class
-class(group8_leadfollow_sub$subject)
-## converting into factor
-group8_leadfollow_sub$subject <- as.factor(group8_leadfollow_sub$subject)
+```{r}
+plot_list
 ```
 
-```{r plotting in 3d}
-## Plotting in 3D again, but just with time
- fig <- plotly::plot_ly(group8_leadfollow_sub, 
-                x = ~x, 
-                y = ~y, 
-                z = ~z, 
-                type = "scatter3d", 
-                mode = "markers", 
-                size = 2,
-                frame = ~elapsed_time,
-                marker = list(size = 4), ## Adjusting the marker size
-                color = ~subject,
-                colors = c("pink", "steelblue4"))
-                
- fig <- fig %>% plotly::layout(
-   scene = list(
-     aspectmode = "cube"),
-  xaxis = list(title = "X-axis"), 
-  yaxis = list(title = "Y-axis"),
-  zaxis = list(title = "Z-axis"))
- 
-fig <- fig %>% ## adding and changing text
-  plotly::layout(title = list(text = "Group 8", y = 0.9), 
-                 font=list(size=15, family = "Times new roman"),
-                 legend = list(title = list(text = "markers")))
- 
- fig
+Now, we manually identify the values of elapsed_time that correspond to the beginning for each group and condition.
+
+```{r}
+start_time_df <- data.frame(
+  group_and_condition = c("group0_jointlead",
+                          "group0_leadfollow",
+                          "group1_jointlead",
+                          "group1_leadfollow",
+                          "group12_jointlead",
+                          "group12_leadfollow",
+                          "group13_jointlead",
+                          "group13_leadfollow",
+                          "group2_jointlead",
+                          "group2_leadfollow",
+                          "group3_jointlead",
+                          "group3_leadfollow",
+                          "group4_leadfollow",
+                          "group6_jointlead",
+                          "group6_leadfollow",
+                          "group8_leadfollow"),
+  elapsed_time_at_start = as.numeric(c("17",
+                            "35",
+                            "12",
+                            "50",
+                            "33",
+                            "28",
+                            "37",
+                            "94",
+                            "18",
+                            "31",
+                            "12",
+                            "42",
+                            "37",
+                            "14",
+                            "29",
+                            "52")
+                            )
+)
 ```
 
-We tried trimming the trajectories by plotting the data in 3d, but due to constraint in computational power, we decided to not proceed with this option, instead we use the linear gap-filling plots to trim the trajectories.
+Now we will iterate through all the group dataframes and pick the elapsed_time value associated.
+
+```{r}
+# Store your dataframes in a list (same as before)
+dataframes_list <- list(
+  group0_jointlead,
+  group0_leadfollow,
+  group1_jointlead,
+  group1_leadfollow,
+  group12_jointlead,
+  group12_leadfollow,
+  group13_jointlead,
+  group13_leadfollow,
+  group2_jointlead,
+  group2_leadfollow,
+  group3_jointlead,
+  group3_leadfollow,
+  group4_leadfollow,
+  group6_jointlead,
+  group6_leadfollow,
+  group8_leadfollow
+)
+
+# Create an empty list to store the subset dataframes
+subset_dataframes <- list()
+
+# Iterate through rows of start_time_df and extract subsets
+for (i in 1:nrow(start_time_df)) {
+  df_name <- start_time_df$group_and_condition[i]
+  start_time <- start_time_df$elapsed_time_at_start[i]
+  
+  # Find the corresponding dataframe, if it exists
+  if (exists(df_name)) {
+    df <- get(df_name)
+    
+    # Arrange the dataframe by elapsed_time
+    df <- df %>%
+      arrange(elapsed_time)
+    
+    # Extract the subset based on the starting value
+    starting_index <- which(df$elapsed_time == start_time)[1]
+    ending_index <- which(df$elapsed_time == start_time + 30)[1]
+    
+    if (!is.na(starting_index) && !is.na(ending_index)) {
+      subset_df <- df[starting_index:ending_index, ]
+      subset_dataframes[[i]] <- subset_df
+      
+      # Replace the original dataframe in the global environment
+      assign(df_name, subset_df, envir = .GlobalEnv)
+    } else {
+      subset_dataframes[[i]] <- NULL  # Handle cases where the indices are not found
+    }
+  } else {
+    subset_dataframes[[i]] <- NULL  # Handle cases where the dataframe does not exist
+  }
+}
+
+# Now, the original dataframes have been replaced with the new ones in the global environment
+
+```
 
 ## NA checking
 
@@ -548,6 +687,8 @@ for (df_name in group_objects) {
 
 ### Inspecting the raw data by plotting the x-coordinates
 
+(inspecting to further validate the selection of markers -\> the markers chosen account for most of movement)
+
 ```{r for loop that plots x-coordinates for all markers in all groups}
 ## Making a for loop that plots x-coordinates for all markers in all groups
 for (df_name in group_objects) {
@@ -677,7 +818,9 @@ for(n in 1:9){
 
 ```
 
-Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
+```{r}
+
+```
 
 \-\-\-\-\-\--
 
