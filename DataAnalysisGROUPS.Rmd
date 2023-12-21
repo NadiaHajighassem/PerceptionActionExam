@@ -44,7 +44,9 @@ pacman::p_load(
   "fastICA",
   "groupICA",
   "dtw",
-  "dplyr"
+  "dplyr",
+  "plotly",
+  "htmlwidgets"
 )
 
 ## Making sure we are in the right directory
@@ -303,57 +305,191 @@ for (df_name in group_objects) {
   cat("\n")
 }
 ```
+## Trimming to 30 sec
 
-### Plotting the data in order to trim the trajectories (fail)
+Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
 
-```{r installing plotly}
-## Downloading plotly here because it masks some of the functions used earlier, if i download it in the beginning
-install.packages("plotly")
-library(plotly)
+Our original dataframes have a frame every 0,003rd second, so in order to save computational power, we simplify the dataframe for visualisation. In this case we will have points every half second.
+```{r}
+# List objects in your environment that match the pattern
+matching_objects <- ls(pattern = "^group.*_(jointlead|leadfollow)$")
+
+# Create df_list by loading the matching dataframes
+df_list <- lapply(matching_objects, get)
+  
+# Create an empty list to store the simplified dataframes
+simplified_df_list <- list()
+
+# Iterate through the list of dataframes
+for (current_df in df_list) {
+  # Apply the transformation and store the simplified dataframe in a new list
+  simplified_df <- current_df %>%
+    group_by(subject, marker) %>%
+    slice(seq(1, n(), by = 151)) %>%
+    ungroup()
+  
+  # Add the simplified dataframe to the new list
+  simplified_df_list <- c(simplified_df_list, list(simplified_df))
+}
 ```
 
-```{r subsetting dataframes}
-group8_leadfollow_sub <- group8_leadfollow %>%
-   dplyr::filter(elapsed_time <= 3)
+
+Then we make 3d plots with included timeframe to identify the t-poses and thereby where our 30 second window starts.
+
+```{r}
+# Create an empty list to store the plots
+plot_list <- list()
+
+# Iterate through the simplified dataframes
+for (i in seq_along(simplified_df_list)) {
+  df_name <- names(simplified_df_list)[i]
+  df <- simplified_df_list[[i]]
+  
+  # Create the base plot
+  fig <- plot_ly(df, 
+                 x = ~x, 
+                 y = ~y, 
+                 z = ~z, 
+                 type = "scatter3d", 
+                 mode = "markers", 
+                 size = 2,
+                 frame = ~elapsed_time,
+                 marker = list(size = 4), ## Adjusting the marker size
+                 color = ~subject)
+  
+  fig <- fig %>% plotly::layout(
+    scene = list(
+      xaxis = list(title = "X-axis", range = c(-800, 800)), 
+      yaxis = list(title = "Y-axis", range = c(-800, 800)),
+      zaxis = list(title = "Z-axis", range = c(0, 1800)),
+      aspectmode = "manual",
+      aspectratio = list(x = 1, y = 1, z = 1)
+    ),
+    xaxis = list(title = "X-axis"), 
+    yaxis = list(title = "Y-axis"),
+    zaxis = list(title = "Z-axis"))
+  
+  fig <- fig %>% ## adding and changing text
+    plotly::layout(title = list(text = df_name, y = 0.9), 
+                   font=list(size=15, family = "Times new roman"),
+                   legend = list(title = list(text = "markers")))
+  
+  plot_list[[i]] <- fig
+}
+
+# Now plot_list contains all the plots for each simplified dataframe
+
+# Save each plot in plot_list as an HTML file
+for (i in seq_along(plot_list)) {
+  plot <- plot_list[[i]]
+  filename <- paste0("plot_", i, ".html")
+  saveWidget(plot, file = filename)
+}
 ```
 
-```{r making subject columns into a factor, so we can color by subject later}
-## checking class
-class(group8_leadfollow_sub$subject)
-## converting into factor
-group8_leadfollow_sub$subject <- as.factor(group8_leadfollow_sub$subject)
+```{r}
+plot_list
 ```
 
-```{r plotting in 3d}
-## Plotting in 3D again, but just with time
- fig <- plotly::plot_ly(group8_leadfollow_sub, 
-                x = ~x, 
-                y = ~y, 
-                z = ~z, 
-                type = "scatter3d", 
-                mode = "markers", 
-                size = 2,
-                frame = ~elapsed_time,
-                marker = list(size = 4), ## Adjusting the marker size
-                color = ~subject,
-                colors = c("pink", "steelblue4"))
-                
- fig <- fig %>% plotly::layout(
-   scene = list(
-     aspectmode = "cube"),
-  xaxis = list(title = "X-axis"), 
-  yaxis = list(title = "Y-axis"),
-  zaxis = list(title = "Z-axis"))
- 
-fig <- fig %>% ## adding and changing text
-  plotly::layout(title = list(text = "Group 8", y = 0.9), 
-                 font=list(size=15, family = "Times new roman"),
-                 legend = list(title = list(text = "markers")))
- 
- fig
+Now, we manually identify the values of elapsed_time that correspond to the beginning for each group and condition.
+
+```{r}
+start_time_df <- data.frame(
+  group_and_condition = c("group0_jointlead",
+                          "group0_leadfollow",
+                          "group1_jointlead",
+                          "group1_leadfollow",
+                          "group12_jointlead",
+                          "group12_leadfollow",
+                          "group13_jointlead",
+                          "group13_leadfollow",
+                          "group2_jointlead",
+                          "group2_leadfollow",
+                          "group3_jointlead",
+                          "group3_leadfollow",
+                          "group4_leadfollow",
+                          "group6_jointlead",
+                          "group6_leadfollow",
+                          "group8_leadfollow"),
+  elapsed_time_at_start = as.numeric(c("17",
+                            "35",
+                            "12",
+                            "50",
+                            "33",
+                            "28",
+                            "37",
+                            "94",
+                            "18",
+                            "31",
+                            "12",
+                            "42",
+                            "37",
+                            "14",
+                            "29",
+                            "52")
+                            )
+)
 ```
 
-We tried trimming the trajectories by plotting the data in 3d, but due to constraint in computational power, we decided to not proceed with this option, instead we use the linear gap-filling plots to trim the trajectories.
+```{r}
+# Store your dataframes in a list (same as before)
+dataframes_list <- list(
+  group0_jointlead,
+  group0_leadfollow,
+  group1_jointlead,
+  group1_leadfollow,
+  group12_jointlead,
+  group12_leadfollow,
+  group13_jointlead,
+  group13_leadfollow,
+  group2_jointlead,
+  group2_leadfollow,
+  group3_jointlead,
+  group3_leadfollow,
+  group4_leadfollow,
+  group6_jointlead,
+  group6_leadfollow,
+  group8_leadfollow
+)
+
+# Create an empty list to store the subset dataframes
+subset_dataframes <- list()
+
+# Iterate through rows of start_time_df and extract subsets
+for (i in 1:nrow(start_time_df)) {
+  df_name <- start_time_df$group_and_condition[i]
+  start_time <- start_time_df$elapsed_time_at_start[i]
+  
+  # Find the corresponding dataframe, if it exists
+  if (exists(df_name)) {
+    df <- get(df_name)
+    
+    # Arrange the dataframe by elapsed_time
+    df <- df %>%
+      arrange(elapsed_time)
+    
+    # Extract the subset based on the starting value
+    starting_index <- which(df$elapsed_time == start_time)[1]
+    ending_index <- which(df$elapsed_time == start_time + 30)[1]
+    
+    if (!is.na(starting_index) && !is.na(ending_index)) {
+      subset_df <- df[starting_index:ending_index, ]
+      subset_dataframes[[i]] <- subset_df
+      
+      # Replace the original dataframe in the global environment
+      assign(df_name, subset_df, envir = .GlobalEnv)
+    } else {
+      subset_dataframes[[i]] <- NULL  # Handle cases where the indices are not found
+    }
+  } else {
+    subset_dataframes[[i]] <- NULL  # Handle cases where the dataframe does not exist
+  }
+}
+
+# Now, the original dataframes have been replaced with the new ones in the global environment
+
+```
+
 
 ## NA checking
 
@@ -405,35 +541,38 @@ objects <- ls()
 # Process Joint Lead Dataframes
 joint_lead_dataframes <- grep("_jointlead$", objects, value = TRUE)
 joint_lead_list <- lapply(joint_lead_dataframes, get)
-joint_lead_combined <- bind_rows(joint_lead_list, .id = "group") %>%
-  mutate(type = "joint_lead")
+joint_lead_combined <- bind_rows(joint_lead_list)
+
 
 # Process Lead Follow Dataframes
 lead_follow_dataframes <- grep("_leadfollow$", objects, value = TRUE)
 lead_follow_list <- lapply(lead_follow_dataframes, get)
-lead_follow_combined <- bind_rows(lead_follow_list, .id = "group") %>%
-  mutate(type = "lead_follow")
+lead_follow_combined <- bind_rows(lead_follow_list)
+
+#lead_follow_combined <- bind_rows(lead_follow_list, .id = lead_follow_list$group)
+#lead_follow_combined <- bind_rows(lead_follow_list, .id = lead_follow_list$group)
 
 # Combine both datasets
 combined_df <- bind_rows(joint_lead_combined, lead_follow_combined)
 
+
 # Identifying columns with NAs and processing
 na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
-columns_to_summarize <- c("marker", na_columns, "group", "type")
+columns_to_summarize <- c("marker", na_columns, "group")
 
 # Summarize the number of NAs for each marker
 result <- combined_df %>%
   select(all_of(columns_to_summarize)) %>%
-  group_by(group, marker, type) %>%
+  group_by(group, marker) %>%
   summarise(across(everything(), ~ sum(is.na(.))), .groups = "drop") %>%
-  arrange(marker, type)
+  arrange(marker, group)
 
 
 # Plotting with facet wrap
 p <- ggplot(result, aes(x = marker, y = x, fill = marker)) +
   geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
   labs(title = "NA's in Combined Dataframes", x = "Marker", y = "Number of NA") +
-  facet_wrap(~ type) +
+  facet_wrap(~ group) +
   coord_flip()
 
 # Print the combined plot
@@ -637,12 +776,13 @@ for(n in 1:9){
   )
 
   # Apply the linear gap fill function to each column, by condition
-  selected_traj_data <- selected_traj_data %>% 
+  selected_traj_data1 <- selected_traj_data %>% 
     group_by(condition, subject, marker) %>% 
     mutate_at(
       vars(x, y, z),
       ~ gap_fill_linear(.)
     )
+  
 
   # Plot a single marker's x, y, and z values after gap filling
   plot_after <- selected_traj_data %>%
@@ -677,205 +817,246 @@ for(n in 1:9){
 
 ```
 
+
 Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
 
-\-\-\-\-\-\--
+## Preprocessing for ICA
 
-#### ICA
+```{r splitting dataframes and creating datamatrices, DONT RUN THIS, RUN THE ONE BENEATH IT INSTEAD}
+unique_groups <- unique(selected_traj_data$group)
+unique_conditions <- unique(selected_traj_data$condition)
+unique_subjects <- unique(selected_traj_data$subject)
 
-```{r Convert dataframe to matrix}
-## converting to matrix
-x <- data.matrix(group8_leadfollow)
-
-## removing NA's as a temporary solution
-x <- na.omit(x)
+# Iterate over unique combinations of group, condition, and subject
+for (group in unique_groups) {
+  for (condition in unique_conditions) {
+    for (subject in unique_subjects) {
+      # Filter data based on the current group, condition, and subject
+      subset_data <- selected_traj_data[selected_traj_data$group == group & 
+                                        selected_traj_data$subject == subject & 
+                                        selected_traj_data$condition == condition, ]
+      
+      # Create a unique identifier for the subset matrix
+      subset_identifier <- paste0("matrix_", group, "_", condition, "_", subject)
+      
+      # Print information about the subset data
+      cat("Subset data:", subset_identifier, "Number of observations:", nrow(subset_data), "\n")
+      # Convert the subset data frame to a matrix
+      #subset_matrix <- data.matrix(subset_data)
+      
+      # Assign the subset matrix to a new variable in the global environment
+      assign(subset_identifier, subset_matrix, envir = .GlobalEnv)
+    }
+  }
+}
 ```
 
+```{r THIS REMOVES ALL NAS}
+# Iterate over unique combinations of group, condition, and subject
+unique_groups <- unique(selected_traj_data$group)
+unique_conditions <- unique(selected_traj_data$condition)
+unique_subjects <- unique(selected_traj_data$subject)
+
+for (group in unique_groups) {
+  for (condition in unique_conditions) {
+    for (subject in unique_subjects) {
+      # Filter data based on the current group, condition, and subject
+      subset_data <- selected_traj_data[selected_traj_data$group == group & 
+                                        selected_traj_data$subject == subject & 
+                                        selected_traj_data$condition == condition, ]
+      
+      # Remove rows with NA values
+      subset_data <- na.omit(subset_data)
+      
+      # Create a unique identifier for the subset matrix
+      subset_identifier <- paste0("matrix_", group, "_", condition, "_", subject)
+      
+      # Print information about the subset data
+      cat("Subset data:", subset_identifier, "Number of observations:", nrow(subset_data), "\n")
+      # Convert the subset data frame to a matrix
+      subset_matrix <- data.matrix(subset_data)
+      
+      # Assign the subset matrix to a new variable in the global environment
+      assign(subset_identifier, subset_matrix, envir = .GlobalEnv)
+    }
+  }
+}
+```
+
+
+Side note: The following groups have zero dataframes, which makes a lot of sense, since we don't have their condition and quite frankly i dont even know why the for loop made them - my theory is that because we do gap filling before splitting the dataframes, the NA's are now replaced with 1's or something else which is why they get printed
+
+matrix_group4_jointlead_A, matrix_group4_jointlead_B,
+
+matrix_group8_jointlead_A, matrix_group8_jointlead_B
+
+So instead of changing my for loop, i will be lazy and just remove them from the enviroment
+
+Also note, we only need this for loop if we are doing ICA!!! because the input has to be a matrix
+
+```{r remove groups}
+rm(matrix_group4_jointlead_A, matrix_group4_jointlead_B, matrix_group8_jointlead_A, matrix_group8_jointlead_B)
+```
+
+## PCA ##
+Here is what we need to do for PCA
+1. Make sure that the dataframe only contains numeric values
+2. Check for NA's
+3. Normalize the data
+4. Plot the covariance/correlation matrix
+5. Do the actual PCA and then check cumulative proportion
+6. Create additional plots to gain further insight
+
+```{r downloading required packages}
+pacman::p_load(
+  corrr,
+  ggcorrplot,
+  FactoMineR,
+  factoextra
+)
+```
+
+1. Make sure that the dataframe only contains numeric values
 ```{r}
-## filtering time
-group8_leadfollow_sub <- group8_leadfollow %>%
-  dplyr::filter(elapsed_time <= 5 )
-  
-## splitting dataframes by subject
-df_A <- group8_leadfollow_sub %>% dplyr::filter(subject == "A")
-df_B <- group8_leadfollow_sub %>% dplyr::filter(subject == "B")
+## inspect data
+head(group2_jointlead)
 
-## making them into matrices
-df_A_x <- data.matrix(df_A) 
-df_b_x <- data.matrix(df_B) 
+## remove index,time, group and condition, as they are not relevant for our analysis
+group2_jointlead.PCA <- group2_jointlead[,-c(1,2,3,4)]
 
-## removing NA's 
-df_A_x <- na.omit(df_A_x) 
-df_b_x <- na.omit(df_b_x) 
+## make into factor
+group2_jointlead.PCA$marker <- as.factor(group2_jointlead.PCA$marker)
+group2_jointlead.PCA$subject <- as.factor(group2_jointlead.PCA$subject)
+
+#convert marker and subject variables to numeric
+group2_jointlead.PCA[, c('marker', 'subject')] <- sapply(group2_jointlead.PCA[, c('marker', 'subject')], unclass)
+
+# check the new dataframe
+head(group2_jointlead.PCA)
+## i am actually not sure whether we need marker or subject actually?
 ```
 
-```{r apply ICA}
-## for both subject in one dataframe
-a <- fastICA(x, 5, alg.typ = "parallel", fun = "logcosh", alpha = 1,
-             method = "R", row.norm = FALSE, maxit = 200,
-             tol = 0.0001, verbose = TRUE)
+2. Check for NA's
+```{r}
+sum(is.na(group2_jointlead.PCA))
 
-## for subject A
-A <- fastICA(df_A_x, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
-             method = "R", row.norm = FALSE, maxit = 200,
-             tol = 0.0001, verbose = TRUE)
-
-## for subject B
-B <- fastICA(df_b_x, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
-             method = "R", row.norm = FALSE, maxit = 200,
-             tol = 0.0001, verbose = TRUE)
-
-## Extracting the individual components
-A1 <- A$S
-B1 <- B$S
-
-## side note: neg-entropy is a way of measuring how much a distribution deviates from a Gaussian distribution. We want to maximize neg-entropy because it maximizes independence, which is the whole purpose of ICA.
+## temporary solution
+group2_jointlead.PCA <- na.omit(group2_jointlead.PCA)
 ```
+3. Normalize the data
+```{r}
+data_normalized <- scale(group2_jointlead.PCA) 
+head(data_normalized)
+```
+4. Plot the covariance/correlation matrix
+```{r}
+corr_matrix <- cor(data_normalized)
+ggcorrplot(corr_matrix)
+```
+5. Do the actual PCA and then check cumulative proportion
+```{r}
+data.pca <- princomp(corr_matrix)
+summary(data.pca)
 
-```{r dynamic time warping}
-## limit reached
-dtw_result <- dtw::dtw(A1, B1, keep = TRUE)
+## Most of the data can be explained by the two first components, which is really nice!!!
+```
+```{r}
+## Here we can see what the components consists of and how much they contribute
+data.pca$loadings[, 1:2]
+```
+6. Create additional plots to gain further insight
+```{r scree plot}
+fviz_eig(data.pca, addlabels = TRUE)
+## Here it is just visualized how much each component explains
+```
+```{r}
+# Graph of the variables
+fviz_pca_var(data.pca, col.var = "black")
+
+## altså ved første øjekast, ser den lidt fucked ud men det tror jeg ikke den er 
+```
+```{r}
+## So my guess is that you would just need pc1 and pc2 to do dynamic time warping?
+
+# Extract the scores (principal components)
+pca_scores <- data.pca$scores
+
+# Access p1 and p2 
+p1 <- pca_scores[, 1]
+p2 <- pca_scores[, 2]
+```
+```{r DTW}
+## testing to check if it works
+dtw_result <- dtw::dtw(p1, p2, keep = TRUE)
 
 # Access the DTW distance
 dtw_distance <- dtw_result$distance
 
 # Print the DTW distance
 print(paste("DTW Distance:", dtw_distance))
-
 ```
 
+Bare nogle small notes
+## ratio between pc 1 and pc 2 tells you which is more important, when it comes to describing the spread of the data. 
+
+## ICA ##
+jl = jointlead
+lf = leadfollow
+```{r ICA for group 0, jointlead}
+A0_jl <- fastICA(matrix_group0_jointlead_A, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+B0_jl <- fastICA(matrix_group0_jointlead_B, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+```
+
+```{r ICA for group 0, leadfollow}
+A0_lf <- fastICA(matrix_group0_leadfollow_A, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+
+B0_lf <- fastICA(matrix_group0_leadfollow_B, 2, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = TRUE)
+```
+
+Hi Kat! these are the variables you will need to do DTW! 
+```{r Group 0, extracting individual components}
+## jointlead
+A0_jl <- A0_jl$S
+B0_jl <- B0_jl$S
+
+## leadfollow
+A0_lf <- A0_lf$S
+B0_lf <- B0_lf$S
+```
+
+## Dont mind this, i am just plotting the components here from A0 in jointlead just to see how it looks
 ```{r}
-window_size_samples <- 50
-
-
-  result <- dtw(
-          x = A1,
-          y = B1,
-          window.type = "none",
-          window.size = window_size_samples,
-          keep = TRUE
-        )
-```
-
-```{r}
-dtw(
-  x = A1,
-  y = B1,
-  dist.method = "Euclidean",
-  step.pattern = symmetric2,
-  window.type = "none",
-  keep.internals = FALSE,
-  distance.only = FALSE,
-  open.end = FALSE,
-  open.begin = FALSE,
-)
-```
-
-```{r saving the independent components into a dataframe}
-## Independent components yes no?!?!?!!
-independent_components <- a$S # OH MAH GOD I UNDERSTAND NOTHITNREFD
-
-independent_components <- as.data.frame(independent_components)
-```
-
-```{r plotting independent components}
-par(mfrow = c(1, 5)) # Set up a 1x2 plotting grid for two components
-## plotting the first independent component
-independent_components[, 1] %>%
+par(mfrow = c(1, 2)) # Set up a 1x2 plotting grid for two components
+## plotting the first independent component for A
+A0_jl[, 1] %>%
   plot()
-## plotting the second independent component
-independent_components[, 2] %>%
-  plot()
-## plotting the third independent component
-independent_components[, 3] %>%
-  plot()
-## plotting the fourth independent component
-independent_components[, 4] %>%
-  plot()
-## plotting the fifthindependent component
-independent_components[, 5] %>%
+## plotting the second independent component for B
+A0_jl[, 2] %>%
   plot()
 
+```
+```{r dynamic time warping}
+## limit reached
+dtw_result <- dtw::dtw(A0_jl, B0_jl, keep = TRUE) ## min computer siger limit reached, so we are missing some computational strength. Jeg tror sagtens man kan køre den, hvis man f.eks. tager de 10 første sekunder - men vi skal jo gerne have alle 30 sekunder med 
 
+# Access the DTW distance
+dtw_distance <- dtw_result$distance
 
-i <- independent_components[, 1]
-
-ii <- independent_components[, 2]
+# Print the DTW distance
+print(paste("DTW Distance:", dtw_distance))
 ```
 
-#### DTW
-
-```{r}
-dtw(
-  x = A1,
-  y = B1,
-  step.pattern = symmetric2,
-  window.type = "none",
-  keep.internals = FALSE,
-  distance.only = FALSE,
-  open.end = FALSE,
-  open.begin = FALSE,
-)
-
-
- result <- dtw(
-          x = A1,
-          y = B1,
-          window.type = "sakoechiba",
-          window.size = window_size_samples,
-          keep = TRUE
-        )
 
 
 
-# Assuming 'independent_components' is your time series data
-data("aami3a")
-ref <- window(aami3a,start=0,end=2)
-test <- window(aami3a,start=2.7,end=5)
-plot(dtw(test,ref,k=TRUE),type="two",off=1,match.lty=2,match.indices=20)
 
 
-```
-
-```{r}
-  result <- dtw(
-          x = cond_data[cond_data$subject == "A", axis],
-          y = cond_data[cond_data$subject == "B", axis],
-          window.type = "sakoechiba",
-          window.size = window_size_samples,
-          keep = TRUE
-        )
-      },
-      error = function(e) {
-        warning(paste(
-          "Error doing DTW, skipping...maybe try standardizing?",
-          "Condition:",
-          cond,
-          "Marker:",
-          sel_marker,
-          "Axis:",
-          axis,
-          "Length of A:",
-          length(cond_data[cond_data$subject == "A", axis]),
-          "Length of B:",
-          length(cond_data[cond_data$subject == "B", axis]),
-          "Error:",
-          e
-          )
-        )
-        result <- NULL
-      }
-    )
-    if (is.null(result)) {
-      message("Skipping...check warning messages at end of output")
-      next
-    }
-    results[[length(results) + 1]] <- list(
-      condition = cond,
-      marker = sel_marker,
-      axis = axis,
-      normalizedDistance = result$normalizedDistance,
-      distance = result$distance
-    )
-      
-```
