@@ -55,12 +55,11 @@ if (basename(wd) != "PerceptionActionExam") {
   setwd("./PerceptionActionExam")
 }
 
-# set the directory for the data
-# note, path_home() will return the path to your home directory
-# your home directory is the one that contains your documents, downloads, etc.
+                              ##NADIA PATH##
 # data_dir <- path_home() %>% 
 #   path("Documents", "GitHub", "PerceptionActionExam", "data", "tsvs") ## Nadia's path
 
+                              #KATHARINA PATH##
 data_dir <- path_home() %>%
 path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
