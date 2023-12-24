@@ -1054,7 +1054,12 @@ dtw_distance <- dtw_result$distance
 # Print the DTW distance
 print(paste("DTW Distance:", dtw_distance))
 ```
+```{r}
 
+```
+
+
+### KATHARINA
 
 
 
