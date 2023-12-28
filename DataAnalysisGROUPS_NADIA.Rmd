@@ -48,17 +48,17 @@ pacman::p_load(
 conflicts_prefer(dplyr::filter)
 ## Making sure we are in the right directory
 wd <- getwd()
-if (basename(wd) != "PerceptionActionExam-Clean-up-attempt") {
-  setwd("./PerceptionActionExam-Clean-up-attempt")
+if (basename(wd) != "PerceptionActionExam") {
+  setwd("./PerceptionActionExam")
 }
 
                               ##NADIA PATH##
- data_dir <- path_home() %>% 
-   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+ # data_dir <- path_home() %>% 
+ #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
 
                               #KATHARINA PATH##
-#data_dir <- path_home() %>%
-#path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+data_dir <- path_home() %>%
+path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 theme_set(theme_minimal())
@@ -977,7 +977,7 @@ We still have a lot of NA's caused by inadequent registering of markers during e
 
 \-\-\-\-\-\--
 
-# ICA
+# ICA: Independent Component Analysis
 
 ## ICA-preprocessing
 
@@ -1120,6 +1120,8 @@ component_list_B <- lapply(ica_results_B, function(ica) ica$S)
 rm(ica_results_A, ica_results_B)
 ```
 
+Now we visualise the components, to make it clear which representations of motion each subject has.
+
 ```{r}
 library(ggplot2)
 
@@ -1144,7 +1146,9 @@ ggplot(data.frame(time = 1:nrow(component_to_visualize_B), value = component_to_
 
 rm(component_to_visualize_A, component_to_visualize_B)
 ```
-## naDia:The time series in one plot
+
+Now we get each components per condition into a common plot, effectively making it easier to visualise their pathways as a last step before DTW
+
 ```{r}
 # Assuming component_list_A and component_list_B are lists of independent components
 component_A <- component_list_A[[1]]
@@ -1167,9 +1171,13 @@ ggplot(combined_df, aes(x = time, y = value, color = group)) +
   labs(title = "Independent Components - Subjects A and B", x = "Time", y = "Component Value")
 
 ```
-### DYNAMITC TIME WARPING BITCHESSSSSS ######
 
-## Computing DTW for each group with a for loop, resulsts can be found in "dtw_results_df"
+# DTW: Dynamic Time Warping
+
+## Scoring each pair
+
+Computing DTW for each group with a for loop, results can be found in "dtw_results_df"
+
 ```{r}
 # Create empty vectors to store DTW distances, group numbers, and conditions
 dtw_distances <- numeric(length(component_list_A))
@@ -1209,7 +1217,9 @@ summary(dtw_distances)
 print(dtw_results_df)
 
 ```
-## This was just to check manually, that the for loop calculated DTW correctly
+
+This was just to check manually, that the for loop calculated DTW correctly
+
 ```{r}
 ## Doing DTW
 dtw_result <- dtw::dtw(component_list_A[[9]], component_list_B[[9]], keep = TRUE)
@@ -1220,14 +1230,17 @@ dtw_distance <- dtw_result$distance
 # Print the DTW distance
 print(paste("DTW Distance:", dtw_distance))
 ```
-## Taking the mean of DTW for all groups to get a baseline
+
+Taking the mean of DTW for all groups to get a baseline
+
 ```{r}
 DTW_mean <- mean(dtw_results_df$DTW_Distance) 
 
 print(paste("mean:", DTW_mean))
 ```
 
-## Checking which groups are below the mean and therefore high in similariy
+Checking which groups are below the mean and therefore high in similariy
+
 ```{r}
 for (i in seq_along(dtw_results_df$DTW_Distance)) {
   dtw_distance <- dtw_results_df$DTW_Distance[i]
@@ -1239,13 +1252,9 @@ for (i in seq_along(dtw_results_df$DTW_Distance)) {
 }
 ```
 
-NOW I AM JUST PLOTTING IT
+## Visualising
 
-Alright, so after sitting with it for a while, i figured out there are 4 types of plots, we can make for dynamic time warping:
-1. twoway
-2. threeway
-3. alignment
-4. density
+Alright, so after sitting with it for a while, I figured out there are 4 types of plots, we can make for dynamic time warping: 1. twoway 2. threeway 3. alignment 4. density
 
 ```{r twoway}
 plot(dtw(component_list_A[[9]],
@@ -1277,7 +1286,6 @@ plot(dtw(component_list_A[[9]],
          col = c("blue", "pink"))
 ```
 
-
 ```{r density}
 plot(dtw(component_list_A[[9]],
          component_list_B[[9]],
@@ -1287,8 +1295,8 @@ plot(dtw(component_list_A[[9]],
          match.lty=2)
 ```
 
+This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others.
 
-## This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others. 
 ```{r}
 plot(
     dtw(component_list_A[[9]],component_list_B[[9]],
@@ -1300,5 +1308,4 @@ plot(
         type="twoway",offset=-2)
 ```
 
-
-
+## False-pairs

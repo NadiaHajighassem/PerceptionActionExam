@@ -32,8 +32,10 @@ pacman::p_load(
 
 #Aesthetic setup
 theme_set(theme_ipsum())
-global_fill_colour <- "#0e3b85"
-aesthetic_palette <- c("#624C40","#97986E","#CBAF9A","#93703B","#9E2825")
+global_fill_colour <- "#a94f62"
+aesthetic_palette <- c(
+  "#d8aeb5","#cb95a2","#c17f8c","#b46977","#a94f62", "#854354", "#733545",
+  "#5f2e38","#48222b","#2f151b","#d1b7b9","#b59592","#9b6f69","#")
 ```
 
 # Pre-processing
