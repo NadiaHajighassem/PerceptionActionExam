@@ -74,9 +74,11 @@ empathy_questionnaire <- empathy_questionnaire %>%
   mutate(across(starts_with("question:"), ~as.numeric(str_replace_all(., "[^0-9]", ""))))
 ```
 
-## Eye movement data
+## Dance experience Survey
 
-```{r eye_data}
+In order to account for experience with dance we score each participant according to their answers on the survey
+
+```{r dance_data}
 
 ```
 
@@ -315,3 +317,13 @@ ggplot(long_format_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
   scale_color_manual(values = aesthetic_highlight_difference_palette)
 
 ```
+
+## Adding dance experience scores
+
+```{r}
+
+```
+
+# Modelling
+
+We wish to model to account for each participants degree of dance-expertise.

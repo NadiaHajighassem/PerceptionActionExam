@@ -1,0 +1,421 @@
+---
+title: "PCA"
+author: "Katharina Hellmund"
+date: "2023-12-29"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+mainfont: Times New Roman
+---
+
+```{r setup}
+## Setup chunk
+knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
+
+
+pacman::p_load(
+  "XML",
+  "tidyverse",
+  "fs",
+  "assertthat",
+  "stringi",
+  "dtw",
+  "RTransferEntropy",
+  "signal",
+  "conflicted",
+  "Rcpp",
+  "future",
+  "fastICA",
+  "groupICA",
+  "dtw",
+  "dplyr",
+  "plotly",
+  "htmlwidgets",
+  "hrbrthemes",
+  "zoo",
+  "corrplot",
+  "corrr",
+  "ggcorrplot",
+  "FactoMineR",
+  "factoextra"
+)
+conflicts_prefer(dplyr::filter)
+## Making sure we are in the right directory
+wd <- getwd()
+if (basename(wd) != "PerceptionActionExam") {
+  setwd("./PerceptionActionExam")
+}
+
+                              ##NADIA PATH##
+ # data_dir <- path_home() %>% 
+ #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+
+                              #KATHARINA PATH##
+data_dir <- path_home() %>%
+path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+
+
+#Aesthetic setup
+theme_set(theme_ipsum(base_family = "Times New Roman"))
+global_fill_colour <- "#8d5b5a"
+aesthetic_palette <- c(
+  "#d8aeb5","#c17f8c","#b59592","#9b6f69","#a94f62","#8d5b5a","#684141","#733545","#523438","#48222b","#2f1a1b")
+aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
+```
+
+# Importing data
+
+```{r}
+# Set the directory where your CSV files are located
+data_folder <- "data/mocap_data_prepped"
+
+# List all CSV files in the specified folder
+csv_files <- list.files(data_folder, pattern = "*.csv", full.names = TRUE)
+
+# Initialize an empty list to store the dataframes
+list_of_dataframes <- list()
+
+# Loop through each CSV file, read it into a dataframe, and store it in the list with its original file name
+for (csv_file in csv_files) {
+  # Extract the file name without the extension
+  file_name <- tools::file_path_sans_ext(basename(csv_file))
+  
+  # Read the CSV file into a dataframe and assign it to the list with the file name as the list name
+  list_of_dataframes[[file_name]] <- read.csv(csv_file)
+}
+
+```
+
+# Preprocessing
+
+In our preprocessing we want to cover the following:
+
+1.  Dataframe only contains numeric values
+2.  NA handling
+3.  Normalising (z-score/ standardisation)
+4.  Plot covariance/correlation matrix
+
+## Converting to wideformat: only numeric values
+
+We only want numeric values in our set. Therefore we convert to a wide format where each combination of marker and subject has their own xyz coordinates. We write a function to do this for us.
+
+```{r}
+convert_to_wide_format <- function(df) {
+  df %>%
+    unite("marker_subject", marker, subject, remove = TRUE) %>%
+    pivot_wider(
+      names_from = marker_subject,
+      values_from = c(x, y, z)
+    )
+}
+```
+
+Then we apply this function to each dataframe in the list_of_dataframes
+
+```{r}
+list_of_dataframes <- lapply(list_of_dataframes, convert_to_wide_format)
+```
+
+Now we effectively have dataframes where each rows represents their own time-point with a row every .00300 seconds. We proceed with removing the columns that do not represent an x,y and z.
+
+```{r}
+for (i in seq_along(list_of_dataframes)) {
+  list_of_dataframes[[i]] <- list_of_dataframes[[i]] %>%
+    select(-index, -condition, -group, -elapsed_time)
+}
+rm(i)
+```
+
+## NA-Handling
+
+For each time we see an NA, we add the last known value for each column. This method is called "last observation carries forward". If there are no last known values, we fill the NAs with the next known value (next observation carries backwards).We start by making a function:
+
+```{r}
+library(tidyr)
+
+fill_NAs_with_LOCF_NOCB <- function(df) {
+  # Apply Last Observation Carried Forward (LOCF)
+  df_filled_locf <- apply(df, 2, function(x) {
+    if (all(is.na(x))) {
+      return(x)
+    } else {
+      return(na.locf(x, na.rm = FALSE))
+    }
+  })
+
+  # Convert back to dataframe
+  df_filled_locf <- as.data.frame(df_filled_locf)
+
+  # Apply Next Observation Carried Backward (NOCB)
+  df_filled_locf_nocb <- apply(df_filled_locf, 2, function(x) {
+    if (all(is.na(x))) {
+      return(x)
+    } else {
+      return(na.locf(x, fromLast = TRUE, na.rm = FALSE))
+    }
+  })
+
+  # Convert back to dataframe and return
+  return(as.data.frame(df_filled_locf_nocb))
+}
+
+```
+
+```{r}
+list_of_dataframes <- lapply(list_of_dataframes, fill_NAs_with_LOCF_NOCB)
+
+#quick na check
+sapply(list_of_dataframes, function(df) any(is.na(df)))
+
+
+```
+
+There are no longer any NAs, and we proceed with standardization.
+
+## Standardisation and normalisation
+
+Our subjects were facing eachother and mirroring eachother. We want to effectively normalise their points to simulate them being the same height (having the same skeleton) and standing in the same spot, facing the same direction.
+
+```{r}
+standardize_and_normalize_dataframe <- function(df) {
+  # Standardize each column of the dataframe
+  standardized_df <- scale(df)
+  
+  # Normalize the standardized dataframe using min-max scaling
+  min_max_normalized_df <- as.data.frame(apply(standardized_df, 2, function(x) {
+    (x - min(x)) / (max(x) - min(x))
+  }))
+  
+  return(min_max_normalized_df)
+}
+
+list_of_dataframes <- lapply(list_of_dataframes, standardize_and_normalize_dataframe)
+
+
+```
+
+## Splitting the data:
+
+```{r}
+list_of_dataframes_A = list()
+list_of_dataframes_B = list()
+
+for (df_name in names(list_of_dataframes)) {
+    df = list_of_dataframes[[df_name]]
+
+    # Columns ending with _A
+    cols_A = grep("_A$", names(df), value = TRUE)
+    if (length(cols_A) > 0) {
+        list_of_dataframes_A[[paste0(df_name)]] = df[, cols_A]
+    }
+
+    # Columns ending with _B
+    cols_B = grep("_B$", names(df), value = TRUE)
+    if (length(cols_B) > 0) {
+        list_of_dataframes_B[[paste0(df_name)]] = df[, cols_B]
+    }
+}
+
+
+```
+
+## Covariance/correlation matrix
+
+```{r}
+for (i in 1:16) {
+    # Ensure the index is within the list length
+    if (i <= length(list_of_dataframes_A)) {
+        corr_matrix_A <- cor(list_of_dataframes_A[[i]])
+        plot_A <- ggcorrplot(corr_matrix_A) +
+                  ggtitle(paste("Correlation Matrix for DataFrame A", i))
+        print(plot_A)
+    }
+
+    if (i <= length(list_of_dataframes_B)) {
+        corr_matrix_B <- cor(list_of_dataframes_B[[i]])
+        plot_B <- ggcorrplot(corr_matrix_B) +
+                  ggtitle(paste("Correlation Matrix for DataFrame B", i))
+        print(plot_B)
+    }
+}
+```
+
+# Running PCA
+
+```{r}
+# Load the necessary library for PCA
+library(FactoMineR)
+
+# Create empty lists to store PCA results and principal components
+pca_results_list_A <- list()
+pca_results_list_B <- list()
+pca_components_list_A <- list()
+pca_components_list_B <- list()
+
+# Define the number of principal components to use
+num_pca_components_to_use <- 2  # You can adjust this as needed
+
+for (i in 1:16) {
+    if (i <= length(list_of_dataframes_A)) {
+        # Extract the dataframe and its name
+        df_A <- list_of_dataframes_A[[i]]
+        df_name_A <- names(list_of_dataframes_A)[i]
+        
+        # Perform PCA
+        pca_A <- PCA(df_A, graph = FALSE)
+        
+        # Save PCA result in the list with dataframe name as key
+        pca_results_list_A[[df_name_A]] <- pca_A
+        
+        # Extract and store principal components with dataframe name as key
+        pca_components_A <- pca_A$ind$coord[, 1:num_pca_components_to_use]
+        pca_components_list_A[[df_name_A]] <- pca_components_A
+    }
+
+    if (i <= length(list_of_dataframes_B)) {
+        # Extract the dataframe and its name
+        df_B <- list_of_dataframes_B[[i]]
+        df_name_B <- names(list_of_dataframes_B)[i]
+        
+        # Perform PCA
+        pca_B <- PCA(df_B, graph = FALSE)
+        
+        # Save PCA result in the list with dataframe name as key
+        pca_results_list_B[[df_name_B]] <- pca_B
+        
+        # Extract and store principal components with dataframe name as key
+        pca_components_B <- pca_B$ind$coord[, 1:num_pca_components_to_use]
+        pca_components_list_B[[df_name_B]] <- pca_components_B
+    }
+}
+
+# Now you have two sets of lists:
+# - pca_results_list_A and pca_results_list_B containing PCA results
+# - pca_components_list_A and pca_components_list_B containing principal components
+# with dataframe names as keys
+
+rm(corr_matrix_A, corr_matrix_B, df, df_A, df_B, pca_A, pca_B)
+```
+
+Next we calculate the area between the components and pick the combination which results in the smallest area: in our case that must be the case where they are aligned. we do this to ensure there is no sign ambiguity when running PCA. We can justify doing this as the goal of the task was to mirror eachother, and it is highly unlikely any participant was doing the opposite of their partner.
+
+```{r}
+# Function to calculate the area between two components, aligning their lengths
+calculate_area_between_components <- function(comp1, comp2) {
+  # Align lengths
+  min_length <- min(nrow(comp1), nrow(comp2))
+  comp1_aligned <- comp1[1:min_length, ]
+  comp2_aligned <- comp2[1:min_length, ]
+
+  # Calculate area
+  sum(abs(comp1_aligned - comp2_aligned))
+}
+
+# Function to align a component based on the smallest area between lines
+align_component_based_on_area <- function(component_A, component_B) {
+  # Align component lengths for area calculation
+  original_area <- calculate_area_between_components(component_A, component_B)
+  flipped_area <- calculate_area_between_components(component_A, -component_B)
+
+  if (flipped_area < original_area) {
+    return(-component_B)
+  } else {
+    return(component_B)
+  }
+}
+
+# Align each pair of components from A and B
+for (i in seq_along(pca_components_list_A)) {
+  if (!is.null(pca_components_list_A[[i]]) && !is.null(pca_components_list_B[[i]])) {
+    pca_components_list_B[[i]] <- align_component_based_on_area(pca_components_list_A[[i]], pca_components_list_B[[i]])
+  }
+}
+
+
+# Clean up
+rm(list_of_dataframes_A, list_of_dataframes_B)
+
+```
+
+# Visualising
+
+We can now visualise how the principle components behave, and get an idea of how synchronised they are before having formally conducted DTW.
+
+```{r}
+# Loop through each index of the component lists
+for (i in seq_along(pca_components_list_A)) {
+  # Extract components for Subject A and Subject B
+  component_A <- pca_components_list_A[[i]]
+  component_B <- pca_components_list_B[[i]]
+
+  # Ensure both components have the same number of rows
+  min_rows <- min(nrow(component_A), nrow(component_B))
+
+  # Combine both components into a single dataframe
+  combined_df <- data.frame(
+    time = rep(1:min_rows, 2),
+    value = c(component_A[1:min_rows, 1], component_B[1:min_rows, 1]),
+    group = rep(c("Subject A", "Subject B"), each = min_rows)
+  )
+
+  # Create a time series plot for both subjects
+  component_name_A <- names(pca_components_list_A)[i]
+  component_name_B <- names(pca_components_list_B)[i]
+  group_number <- paste(component_name_A, "vs", component_name_B)
+
+  
+  p <- ggplot(combined_df, aes(x = time, y = value, color = group)) +
+    geom_line(size = 1) +
+    labs(
+      title = "Independent components", 
+      subtitle = group_number,
+         x = "Time", y = "Component Value", color = "Subject") +
+    scale_color_manual(values = aesthetic_highlight_difference_palette)
+
+  # Print the plot
+  print(p)
+}
+
+
+```
+
+OBS: LOOK AT ORIGINAL FOOTAGE FROM:
+
+-   Group 12_leadfollow
+
+-   Group 13_jointlead
+
+-   Group 13_leadfollow
+
+-   Group2_leadfollow
+
+-   Group 6_jointlead
+
+# Saving principle components
+
+All components are saved in a folder to later be processed using DTW.
+
+```{r}
+# Ensure the fs package is loaded
+library(fs)
+
+# Create the "results/PCA" directory if it doesn't already exist
+dir_create(path("results", "PCA"), recursive = TRUE)
+
+# Function to save each matrix in the component list as a CSV
+save_component_list_as_csv <- function(component_list, dir_path, prefix) {
+  for (i in seq_along(component_list)) {
+    file_path <- file.path(dir_path, paste0(prefix, "_", i, ".csv"))
+    write.csv(component_list[[i]], file_path, row.names = FALSE)
+  }
+}
+
+# Save pca_components_list_A and pca_components_list_B to "results/PCA" as CSV files
+save_component_list_as_csv(pca_components_list_A, "results/PCA", "component_A")
+save_component_list_as_csv(pca_components_list_B, "results/PCA", "component_B")
+
+# Print a message to indicate completion
+cat("All components have been saved as CSV in the 'results/PCA' directory.\n")
+
+```

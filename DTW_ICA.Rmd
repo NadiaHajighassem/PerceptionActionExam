@@ -1,0 +1,386 @@
+---
+title: "DTW ICA"
+author: "Katharina Hellmund"
+date: "2023-12-29"
+output: pdf_document
+---
+
+```{r setup}
+## Setup chunk
+knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
+
+
+pacman::p_load(
+  "XML",
+  "tidyverse",
+  "fs",
+  "assertthat",
+  "stringi",
+  "dtw",
+  "RTransferEntropy",
+  "signal",
+  "conflicted",
+  "Rcpp",
+  "future",
+  "dtw",
+  "dplyr",
+  "plotly",
+  "htmlwidgets",
+  "hrbrthemes",
+  "zoo"
+)
+conflicts_prefer(dplyr::filter)
+## Making sure we are in the right directory
+wd <- getwd()
+if (basename(wd) != "PerceptionActionExam") {
+  setwd("./PerceptionActionExam")
+}
+
+                              ##NADIA PATH##
+ # data_dir <- path_home() %>% 
+ #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+
+                              #KATHARINA PATH##
+data_dir <- path_home() %>%
+path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+
+
+#Aesthetic setup
+theme_set(theme_ipsum(base_family = "Times New Roman"))
+global_fill_colour <- "#8d5b5a"
+aesthetic_palette <- c(
+  "#d8aeb5","#c17f8c","#b59592","#9b6f69","#a94f62","#8d5b5a","#684141","#733545","#523438","#48222b","#2f1a1b")
+aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
+```
+
+# DTW on ICA
+
+## Importing components
+
+```{r}
+# Directory where the components are stored
+components_dir <- "results/ICA"
+
+                  #IMPORTING ALL COMPONENTS FROM A#
+# List all CSV files in the directory that include "_A_" in their names
+component_files_A <- fs::dir_ls(path = components_dir, glob = "*_A_*.csv")
+
+component_list_A <- list()
+
+# Loop through each CSV file, read it into a dataframe, and store it in the list with its original file name
+for (csv_file in component_files_A) {
+  # Extract the file name without the extension
+  file_name <- tools::file_path_sans_ext(basename(csv_file))
+  
+  # Read the CSV file into a dataframe and assign it to the list with the file name as the list name
+  component_list_A[[file_name]] <- read.csv(csv_file)
+}
+
+                  #IMPORTING ALL COMPONENTS FROM B#
+# List all CSV files in the directory that include "_B_" in their names
+component_files_B <- fs::dir_ls(path = components_dir, glob = "*_B_*.csv")
+
+component_list_B <- list()
+
+# Loop through each CSV file, read it into a dataframe, and store it in the list with its original file name
+for (csv_file in component_files_B) {
+  # Extract the file name without the extension
+  file_name <- tools::file_path_sans_ext(basename(csv_file))
+  
+  # Read the CSV file into a dataframe and assign it to the list with the file name as the list name
+  component_list_B[[file_name]] <- read.csv(csv_file)
+}
+```
+
+## Scoring each pair
+
+Computing DTW for each group with a for loop, results can be found in "dtw_results_df"
+
+```{r}
+# Create empty vectors to store DTW distances, group numbers, and conditions
+dtw_distances <- numeric(length(component_list_A))
+group_numbers <- numeric(length(component_list_A))
+conditions <- character(length(component_list_A))
+
+# Loop through each pair of dataframes
+for (i in seq_along(component_list_A)) {
+  # Extract group number and condition from the element name for component_list_A
+  matches <- regmatches(names(component_list_A)[i], regexec("group([0-9]+)_([^_]+)", names(component_list_A)[i]))
+  group_number <- as.numeric(matches[[1]][2])
+  condition <- matches[[1]][3]
+  
+  # Calculate DTW distance for component_list_A
+  dtw_result <- dtw::dtw(component_list_A[[i]], component_list_B[[i]], keep = TRUE)
+  
+  # Extract DTW distance for component_list_A
+  dtw_distance <- dtw_result$distance
+  
+  # Print the DTW distance for component_list_A
+  print(paste("Group", group_number, condition, "DTW Distance:", dtw_distance))
+  
+  # Store DTW distance, group number, and condition in the vectors
+  dtw_distances[i] <- dtw_distance
+  group_numbers[i] <- group_number
+  conditions[i] <- condition
+}
+
+# Create a data frame with results
+dtw_results_df <- data.frame(Group = group_numbers, Condition = conditions, DTW_Distance = dtw_distances)
+
+# Print overall summary or take further actions with dtw_distances vector
+cat("Summary of DTW Distances:\n")
+summary(dtw_distances)
+
+# Display the data frame with results
+print(dtw_results_df)
+
+```
+
+## Visualising
+
+### Testing step patterns
+
+```{r testing_step_patterns}
+i<- 6
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=rabinerJuangStepPattern(6,"c")),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=symmetricP1),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=symmetricP2),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=rabinerJuangStepPattern(7,"b")),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+```
+
+### Visualising all pairs:
+
+```{r twoway}
+for (i in seq_along(component_list_A)) {
+    # TWO WAY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             keep = TRUE,
+             step = rabinerJuangStepPattern(6, "c")),
+         type = "twoway",
+         lty = c(1, 1),
+         lwd = c(6, 6),
+         offset = -2,
+         col = aesthetic_highlight_difference_palette)
+
+    # THREE WAY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             k = TRUE),
+         type = "threeway",
+         off = 1,
+         match.lty = 2,
+         col = aesthetic_highlight_difference_palette)
+
+    # DENSITY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             k = TRUE),
+         type = "density",
+         off = 1,
+         match.lty = 2)
+}
+
+```
+
+This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others.
+
+Kat's answer:
+
+I have found 3 different step patterns: Sakoe-chiba Band, Itakura Parallelogram and then Rabiner Juang (the one Luke is using), but it seems like you can define your own custom step pattern as well - that might be the most common? Anyways GPT says "The one you are currently using is typically used for speech recognition. It's good for sequences where one sequence may have more variance in timing or speed than the other."
+
+## False-pairs
+
+Having given each pair a score for their synchrony, we must now explore if this score is significant or not. We will do this by establishing false-pairs, looking at each subject A with all other subject B and scoring them. This will result in a spectrum of synchrony that is hopefully normally distrubuted. We will then see that the score for the correct pair is statistically significant.
+
+We first look at the jointlead condition
+
+```{r}
+# Initialize vectors to store results
+dtw_distances <- numeric(0)
+component_a_names <- character(0)
+component_b_names <- character(0)
+
+# Loop through each element of component_list_A
+for (a_name in names(component_list_A)) {
+    if (grepl("_jointlead_A$", a_name)) {
+        component_a <- component_list_A[[a_name]]
+
+        # Loop through each element of component_list_B for every qualifying component in component_list_A
+        for (b_name in names(component_list_B)) {
+            if (grepl("_jointlead_B$", b_name)) {
+                # Perform DTW comparison
+                dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
+                
+                # Store DTW distance and corresponding A and B component names
+                dtw_distances <- c(dtw_distances, dtw_result$distance)
+                component_a_names <- c(component_a_names, a_name)
+                component_b_names <- c(component_b_names, b_name)
+            }
+        }
+    }
+}
+
+# Create a data frame with results if any comparisons were made
+if (length(dtw_distances) > 0) {
+    dtw_results_df_jointlead <- data.frame(
+        Component_A = component_a_names, 
+        Component_B = component_b_names, 
+        DTW_Distance = dtw_distances
+    )
+    print(dtw_results_df_jointlead)
+} else {
+    cat("No matching pairs found for '_jointlead_A' and '_jointlead_B'")
+}
+
+```
+
+```{r}
+# Initialize vectors to store results
+dtw_distances <- numeric(0)
+component_a_names <- character(0)
+component_b_names <- character(0)
+
+# Loop through each element of component_list_A
+for (a_name in names(component_list_A)) {
+    if (grepl("_leadfollow_A$", a_name)) {
+        component_a <- component_list_A[[a_name]]
+
+        # Loop through each element of component_list_B for every qualifying component in component_list_A
+        for (b_name in names(component_list_B)) {
+            if (grepl("_leadfollow_B$", b_name)) {
+                # Perform DTW comparison
+                dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
+                
+                # Store DTW distance and corresponding A and B component names
+                dtw_distances <- c(dtw_distances, dtw_result$distance)
+                component_a_names <- c(component_a_names, a_name)
+                component_b_names <- c(component_b_names, b_name)
+            }
+        }
+    }
+}
+
+# Create a data frame with results if any comparisons were made
+if (length(dtw_distances) > 0) {
+    dtw_results_df_leadfollow <- data.frame(
+        Component_A = component_a_names, 
+        Component_B = component_b_names, 
+        DTW_Distance = dtw_distances
+    )
+    print(dtw_results_df_leadfollow)
+} else {
+    cat("No matching pairs found for '_leadfollow_A' and '_leadfollow_B'")
+}
+
+```
+
+Now joining the two dataframes together
+
+```{r}
+# Combine the two dataframes
+false_pairs_df <- rbind(dtw_results_df_leadfollow, dtw_results_df_jointlead)
+
+rm(dtw_results_df_jointlead, dtw_results_df_leadfollow)
+```
+
+```{r}
+# Loop over each unique value in the 'Component A' column
+for (comp_a in unique(false_pairs_df$Component_A)) {
+    # Filter the dataframe for the current component
+    filtered_df <- subset(false_pairs_df, Component_A == comp_a)
+
+    # Create a density plot
+    p <- ggplot(filtered_df, aes(x = DTW_Distance)) +
+        geom_density(fill = global_fill_colour, alpha = 0.5) +
+      labs(
+        title = paste("Density Plot of DTW Distances for Component A:"),
+        subtitle = comp_a)
+
+    # Display the plot
+    print(p)
+}
+
+# Loop over each unique value in the 'Component B' column
+for (comp_b in unique(false_pairs_df$Component_B)) {
+    # Filter the dataframe for the current component
+    filtered_df <- subset(false_pairs_df, Component_B == comp_b)
+
+    # Create a density plot
+    p <- ggplot(filtered_df, aes(x = DTW_Distance)) +
+        geom_density(fill = global_fill_colour, alpha = 0.5) +
+      labs(
+        title = paste("Density Plot of DTW Distances for Component B:"),
+        subtitle = comp_b)
+
+    # Display the plot
+    print(p)
+}
+```
+
+## Real pairs
+
+Taking the mean of DTW for all groups to get a baseline and checking which groups are below the mean and therefore high in similarity.
+
+```{r}
+DTW_mean <- mean(dtw_results_df$DTW_Distance) 
+
+print(paste("mean:", DTW_mean))
+for (i in seq_along(dtw_results_df$DTW_Distance)) {
+  dtw_distance <- dtw_results_df$DTW_Distance[i]
+  if (dtw_distance <= DTW_mean) {
+    group <- dtw_results_df$Group[i]
+    condition <- dtw_results_df$Condition[i]
+    print(paste("DTW_Distance:", dtw_distance, "Group:", group, "Condition:", condition))
+  }
+}
+```
+
+```{r}
+dtw_results_df %>%
+  ggplot(aes(x = DTW_Distance)) +
+  geom_density(fill = global_fill_colour, alpha = 0.5) +  # Add fill color and adjust transparency
+  labs(
+    title = "Density Plot of DTW Distances",
+    x = "DTW Distance",
+    y = "Density"
+  ) 
+```
+
+# Exporting the synchrony scores
+
+In order to compare this to each pairs empathy score, we export as a csv to be used in another RMD
+
+```{r}
+write_csv(dtw_results_df, "results/dtw_results_ICA.csv")
+```
