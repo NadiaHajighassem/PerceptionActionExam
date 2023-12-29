@@ -31,11 +31,11 @@ pacman::p_load(
 )
 
 #Aesthetic setup
-theme_set(theme_ipsum())
-global_fill_colour <- "#a94f62"
+theme_set(theme_ipsum(base_family = "Times New Roman"))
+global_fill_colour <- "#8d5b5a"
 aesthetic_palette <- c(
-  "#d8aeb5","#cb95a2","#c17f8c","#b46977","#a94f62", "#854354", "#733545",
-  "#5f2e38","#48222b","#2f151b","#d1b7b9","#b59592","#9b6f69","#")
+  "#d8aeb5","#c17f8c","#b59592","#9b6f69","#a94f62","#8d5b5a","#684141","#733545","#523438","#48222b","#2f1a1b")
+aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
 ```
 
 # Pre-processing
@@ -83,7 +83,7 @@ empathy_questionnaire <- empathy_questionnaire %>%
 ## Motion Capture
 
 ```{r motion_data}
-
+synchrony_scores <- read_csv("data/dtw_results.csv")
 ```
 
 # Exploratory data-analysis
@@ -251,5 +251,67 @@ empathy_questionnaire %>%
        y="Density") +  # Add labels and title
   theme(text = element_text(size=12))  # Adjusts the text size for readability
 
+
+```
+
+# Empathy and Synchrony
+
+Before plotting we must unify the two dataframes into something usable. There is only one synchrony score per pair, so the A and B pair will have the same score. However, they will each have two scores stemming from the two conditions: Joint Lead and lead follower.
+
+We start by reshaping into a wide format.
+
+```{r}
+library(tidyr)
+
+# Reshaping the dataframe
+synchrony_scores <- synchrony_scores %>%
+  pivot_wider(
+    names_from = Condition, 
+    values_from = DTW_Distance,
+    names_prefix = "DTW_"
+  )
+```
+
+Then we select the columns from the empathy dataframe that we are interested in and add the synchrony scores.
+
+```{r}
+# Selecting relevant columns from empathy_questionnaire
+empathy_dtw_df <- empathy_questionnaire %>%
+  select(`Participant ID`, Gender, Age, EQ_score) %>%
+  # Extract the numeric part of the Participant ID
+  mutate(Group = as.numeric(str_extract(`Participant ID`, "\\d+")))
+
+# Merge with synchrony_scores
+empathy_dtw_df <- empathy_dtw_df %>%
+  left_join(synchrony_scores, by = "Group")
+
+#Reshape back into long-format
+
+empathy_dtw_df <- empathy_dtw_df %>%
+  pivot_longer(
+    cols = starts_with("DTW_"),
+    names_to = "DTW_Type",
+    values_to = "DTW_Value"
+  )
+
+
+# View the combined dataframe
+print(empathy_dtw_df)
+
+```
+
+Now we can plot them to see if there is any relationship:
+
+```{r}
+# Create the plot
+ggplot(long_format_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
+  geom_point() +
+  labs(
+    title = "DTW Values vs EQ Score",
+    x = "EQ Score",
+    y = "DTW Value",
+    color = "Condition"
+  )+
+  scale_color_manual(values = aesthetic_highlight_difference_palette)
 
 ```

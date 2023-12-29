@@ -61,7 +61,12 @@ data_dir <- path_home() %>%
 path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
-theme_set(theme_minimal())
+#Aesthetic setup
+theme_set(theme_ipsum(base_family = "Times New Roman"))
+global_fill_colour <- "#8d5b5a"
+aesthetic_palette <- c(
+  "#d8aeb5","#c17f8c","#b59592","#9b6f69","#a94f62","#8d5b5a","#684141","#733545","#523438","#48222b","#2f1a1b")
+aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
 ```
 
 ## Pre-processing
@@ -362,239 +367,27 @@ A final clean before we work with our CSV files
 rm(conditions, traj_data,traj_labels, i, marker_names, traj_files, data_dir, df_name, file_path, traj_files)
 ```
 
-# Pre-processing: NA's, choosing markers, trimming to 30 seconds
+# Pre-processing: Trimming to 30 seconds, NA's, choosing markers.
 
-## NA checking
+We are only interested in a short frame of time within all the recorded data. However, since we will run into issues if we trim before gapfilling, we will save into two seperate dataframes: one that is trimmed into 30 seconds but not gapfilled, and one that is gapfilled before trimming to 30 seconds. We can then use the non-gapfilled version to check for NAs, only within the timeframe we are actually interested in.
 
-For the most accurate analysis we want to include the following markers: Head, both hands and elbows, and chest. Before proceeding we check for NA's to verify none of these markers have too many NAs.
-
-```{r}
-combined_df <- dplyr::bind_rows(list_of_dataframes) %>% 
-  dplyr::ungroup()  
-
-combined_df %>% 
-  dplyr::summarise(Total_NAs = sum(is.na(x)))
-combined_df %>% 
-  dplyr::summarise(Total_NON_NAs = sum(!is.na(x)))
-
-#NA
-na_pre_gap <- combined_df %>%
-  group_by(marker) %>%
-  summarise(na_count = sum(is.na(x)))
-
-#NON NA
-non_na_pre_gap <-combined_df %>%
-  group_by(marker) %>%
-  summarise(non_na_count = sum(!is.na(x)))
-
-print(na_pre_gap)
-print(non_na_pre_gap)
-
-rm(non_na_pre_gap, na_pre_gap)
+```{r copying_data_to_second_df}
+list_of_dataframes_unfilled <- list_of_dataframes
 ```
 
-```{r}
-# Assuming list_of_dataframes is a list of dataframes
+## Gap-filling
 
-# Iterate over the dataframes in the list
-for (df_name in names(list_of_dataframes)) {
-  # Get the dataframe directly from the list
-  df <- list_of_dataframes[[df_name]]
+We now commence with gap filling one of the dataframes. Prior to doing this, we ran all the chunks in the NA-checking section to identify the most fitting markers; in order to save computational power, this section is now placed in the front to only visualise the relevant 30 seconds. For a detailed walkthrough of how we decided which markers to use, see following sections.
 
-  # Identify columns with NAs
-  na_columns <- colnames(df)[colSums(is.na(df)) > 0]
+The reason why we gap-fill before trimming, is in order to account for all the NA's that might exist in the intervals of trimming. This could result in sequences of NA's towards the end and the beginning of the relevant sequence. When writing this document roughly 6000 NAs were eliminated when changing the order of gap-filling and trimming.
 
-  # Select "marker" column and columns with NAs
-  columns_to_summarize <- c("marker", na_columns)
-  
-  # Perform the operation and summarize
-  result <- df %>%
-    dplyr::select(all_of(columns_to_summarize)) %>%
-    dplyr::group_by(marker) %>%
-    dplyr::summarise(across(everything(), ~ sum(is.na(.)))) %>%
-    dplyr::arrange(across("x"))
+In order to later showcase the amount of NA's in the other markers and to validify our choice of markers, the unfilled dataframe is also not filtered, and keeps data for every marker.
 
-  # Print the result
-  print(result)
-}
-
-rm(result, df, columns_to_summarize, df_name, na_columns)
-```
-
-### NA checking - head marker
-
-We noticed that head_top didn't have a lot of NA's, so we checked whether or not it was the extra marker for A
-
-```{r checking to see which markers B have}
-  list_of_dataframes$group0_jointlead %>%
-  dplyr::filter(subject == "B") %>%
-  distinct(marker)
-
-## Subject B has no head_top heheheheheee
-```
-
-head_top does not appear as a marker in the list, given subject B was only given 2 dots on their head and A was given two; therefore, head_top is the "missing" marker and we therefore cannot use it to compare subjects.
-
-## Visualising the NAs
-
-```{r}
-# Assuming list_of_dataframes is a list of dataframes, each with 'names' and 'types' columns
-
-# Combine all dataframes in list_of_dataframes into one dataframe
-combined_df <- dplyr::bind_rows(list_of_dataframes, .id = "group")
-
-# Identifying columns with NAs and processing
-na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
-columns_to_summarize <- c("marker", na_columns, "group", "condition")
-
-# Summarize the number of NAs for each marker
-result <- combined_df %>%
-  dplyr::select(dplyr::all_of(columns_to_summarize)) %>%
-  dplyr::group_by(group, marker, condition) %>%
-  dplyr::summarise(across(everything(), ~ sum(is.na(.))), .groups = "drop") %>%
-  dplyr::arrange(marker, condition)
-
-# Plotting with facet wrap
-p <- ggplot(result, aes(x = marker, y = x, fill = marker)) +
-  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
-  labs(title = "NA's in Combined Dataframes", x = "Marker", y = "Number of NA") +
-  facet_wrap(~ condition) +
-  coord_flip()
-
-# Print the combined plot
-print(p)
-rm(p, result, columns_to_summarize, na_columns)
-```
-
-```{r}
-# Now we can get the longest sequence of NAs for each marker
-longest_na_seq <- combined_df %>% 
-  group_by(condition, subject, marker) %>%
-  summarise_at(
-    vars(x, y, z),
-    ~ max(rle(is.na(.))$lengths)
-  )
-
-# plot to check if it is acceptable
-longest_na_seq %>% 
-  ggplot(aes(x = marker, y = x, fill=marker, group=subject)) +
-  geom_col(
-    show.legend = FALSE
-  ) +
-  coord_flip() +
-  facet_wrap(c(~subject, ~condition)) +
-  labs(
-    x = "Marker",
-    y = "Longest NA sequence",
-    title = "Longest NA sequence by marker"
-  )
-rm(longest_na_seq)
-```
-
-Unfortunately, the elbow markers have a lot of NA's. According to our plots, the head markers are consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers. However, the head_top is only present for participant A, and therefore we must choose either head_left or head_right. Since head_right has fewer NA's and the longest sequence is also smaller, we proceed with head_right
-
-### Euclidean distance
-
-```{r Euclidean distance plots for each marker}
-# Iterate directly over the dataframes in list_of_dataframes
-for (df in list_of_dataframes) {
-  # Calculate the euclidean distance between each marker (using x, y, z)
-  # We will do this by subject, marker, and axis
-  marker_distances <- df %>% 
-    dplyr::group_by(subject, marker) %>%
-    dplyr::arrange(index) %>%
-    dplyr::mutate(
-      diff_x = x - dplyr::lag(x, 1),
-      diff_y = y - dplyr::lag(y, 1),
-      diff_z = z - dplyr::lag(z, 1)
-    ) %>%
-    dplyr::mutate(
-      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
-    )
-
-  # Plot the series for each marker, and see if anything stands out
-  plot <- ggplot(marker_distances, aes(x = index, y = euclidean_distance)) +
-    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
-    theme_minimal() +
-    facet_wrap(~condition + subject) +
-    labs(
-      x = "Index",
-      y = "Euclidean distance",
-      title = "Euclidean distance from the previous frame by marker",
-      subtitle = paste( df$group[1], "Condition:", df$condition[1])
-    )
-  
-  # Print the plot
-  print(plot)
-}
-rm(df, df_name, marker_distances, plot)
-```
-
-```{r euclidean_distance_selected_markers}
-# Assuming list_of_dataframes is a list of dataframes
-
-for (df in list_of_dataframes) {
-  # Calculate the euclidean distance between each marker (using x, y, z)
-  # We will do this by subject, marker, and axis
-  marker_distances <- df %>% 
-    dplyr::group_by(subject, marker) %>%
-    dplyr::arrange(index) %>%
-    dplyr::mutate(
-      diff_x = x - dplyr::lag(x, 1),
-      diff_y = y - dplyr::lag(y, 1),
-      diff_z = z - dplyr::lag(z, 1)
-    ) %>%
-    dplyr::mutate(
-      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
-    ) %>%
-    # Filter only the specified markers
-    dplyr::filter(marker %in% c("head_right", "hand_right", "hand_left", "chest"))
-
-  # Plot the series for each marker, and see if anything stands out
-  plot <- ggplot(marker_distances, aes(x = index, y = euclidean_distance)) +
-    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
-    theme_minimal() +
-    facet_wrap(~condition + subject) +
-    labs(
-      x = "Index",
-      y = "Euclidean distance",
-      title = "Euclidean distance from the previous frame by marker",
-      subtitle = paste("Group:", df$group[1], "Condition:", df$condition[1])
-    )
-  
-  # Print the plot
-  print(plot)
-}
-rm(df, marker_distances, plot)
-```
-
-### Inspecting the raw data by plotting the x-coordinates
-
-(inspecting to further validate the selection of markers -\> the markers chosen account for most of movement)
-
-```{r for loop that plots x-coordinates for all markers in all groups}
-## Making a for loop that plots x-coordinates for all markers in all groups
-for (df in list_of_dataframes) {
- # Create ggplot
-  plot <- ggplot(df, aes(x = x, y = marker)) +
-    geom_point() +
-    ggtitle(paste("Group:", df$group[1], "Condition:", df$condition[1]))
-  
-  # Print the plot
-  print(plot)
-}
-rm(df, plot)
-```
-
-## Choosing markers
-
-Before filling gaps, we specify the markers we wish to choose. As specified before, we choose chest, hands and head.
-
-```{r}
+```{r markers_of_interest}
 # get the markers of interest
 markers_of_interest <- c(
   "hand_right",
-  "head_right",
+  "head_left",
   "hand_left",
   "chest"
 )
@@ -605,11 +398,9 @@ list_of_dataframes <- lapply(list_of_dataframes, function(df) {
 })
 ```
 
-## Gap-filling
+One of the lists is now used to gap-fill while the other stays empty:
 
-Before trimming, we gap-fill in order to account for all the NA's that might exist in the intervals of trimming.
-
-```{r}
+```{r gap_filling}
 # Assuming markers_of_interest is defined and has at least 4 elements
 # Assuming gap_fill_linear is a function that performs linear gap filling
 
@@ -629,6 +420,7 @@ for (i in seq_along(list_of_dataframes)) {
       ggplot(aes(x = elapsed_time, y = x, color = subject)) +
       geom_line() +
       facet_wrap(~condition) +
+      scale_color_manual(values= aesthetic_highlight_difference_palette)+
       labs(
         x = "Elapsed time",
         y = "Marker X position",
@@ -636,8 +428,6 @@ for (i in seq_along(list_of_dataframes)) {
         subtitle = paste("Group:", group_value, " | ", "Condition:", condition_value)
       )
     print(plot_before)
-    # Save the plot if needed
-    # ggsave(...) - add the appropriate ggsave call here if needed
 
     # Apply the linear gap fill function to each column, by condition
     df <- df %>% 
@@ -653,6 +443,7 @@ for (i in seq_along(list_of_dataframes)) {
       ggplot(aes(x = elapsed_time, y = x, color = subject)) +
       geom_line() +
       facet_wrap(~condition) +
+      scale_color_manual(values= aesthetic_highlight_difference_palette)+
       labs(
         x = "Elapsed time",
         y = "Marker X position",
@@ -673,75 +464,15 @@ combined_df <- dplyr::bind_rows(list_of_dataframes, .id = "group")
 rm(plot_after, plot_before, df, sel_idx, i, condition_value, group_value)
 ```
 
-```{r}
-# Assuming markers_of_interest is defined and has at least 4 elements
-# Assuming gap_fill_linear is a function that performs linear gap filling
-
-for (i in seq_along(list_of_dataframes)) {
-  # Access the dataframe
-  df <- list_of_dataframes[[i]]
-
-  # Apply the linear gap fill function to each column, by condition, subject, and marker
-  df <- df %>% 
-    dplyr::group_by(condition, subject, marker)
-
-  # Update the dataframe in the list
-  list_of_dataframes[[i]] <- df
-
-  # Create a combined plot for each group and condition, faceted by marker
-  unique_groups <- unique(df$group)
-  unique_conditions <- unique(df$condition)
-
-  for (group in unique_groups) {
-    for (condition in unique_conditions) {
-      plot_combined <- df %>% 
-        dplyr::filter(group == group, condition == condition, marker %in% markers_of_interest) %>%
-        ggplot(aes(x = elapsed_time, y = x, color = subject)) +
-        geom_line() +
-        facet_wrap(~marker, nrow = 2, ncol = 2) +  # Arrange facets in a 2x2 grid by marker
-        labs(
-          x = "Elapsed time",
-          y = "Marker X position",
-          title = paste("Group:", group, "| Condition:", condition, "- Marker X Positions after Gap Filling")
-        )
-      print(plot_combined)
-    }
-  }
-}
-```
-
-## NAs after gapfilling
-
-```{r}
-# Now, combined_df contains only the rows from all dataframes where marker matches the markers of interest
-combined_df %>% 
-  dplyr::summarise(Total_NAs = sum(is.na(x)))
-combined_df %>% 
-  dplyr::summarise(Total_NON_NAs = sum(!is.na(x)))
-
-#NA
-na_post_gap <- combined_df %>%
-  group_by(marker) %>%
-  summarise(na_count = sum(is.na(x)))
-
-#NON NA
-non_na_post_gap <-combined_df %>%
-  group_by(marker) %>%
-  summarise(non_na_count = sum(!is.na(x)))
-
-print(na_post_gap)
-print(non_na_post_gap)
-
-rm(non_na_post_gap, na_post_gap)
-```
-
-## Trimming to 30 sec
+## Trimming
 
 Before proceeding we must trim the trajectories to accurately match the window of data collection - meaning, we must identify the 30 second window from which the t-pose starts.
 
-Our original dataframes have a frame every 0,003rd second, so in order to save computational power, we simplify the dataframe for visualisation. In this case we will have points every half second.
+Our original dataframes have a frame every 0,003rd second, so in order to save computational power, we simplify the dataframe for visualisation. In this case we will have points every half second. In doing so we can visually identify the point of t-pose start and end.
 
-```{r}
+When we trim both frames, we effectively create a prior and posterior version of our data, which will later be used for NA-checking, euclidian distance, etc.
+
+```{r identifying_t_pose_prep}
 # Create a new list with processed dataframes without overwriting the original list
 every_half_second_df_list <- lapply(list_of_dataframes, function(df) {
   df %>%
@@ -750,11 +481,9 @@ every_half_second_df_list <- lapply(list_of_dataframes, function(df) {
     ungroup()
 })
 
-# Now, every_half_second_df_list contains the processed versions of the dataframes
-
 ```
 
-Then we make 3d plots with included timeframe to identify the t-poses and thereby where our 30 second window starts.
+Now, every_half_second_df_list contains the simplified versions of the dataframes: the version with data every half second. Using this list, we can now make 3d plots with an included timeframe and identify the t-poses and effectively our 30 second window.
 
 ```{r}
 # Create an empty list to store the plots
@@ -812,7 +541,7 @@ plot_list
 rm(df, fig, plot, i, df_name, filename, current_df)
 ```
 
-Now, we manually identify the values of elapsed_time that correspond to the beginning for each group and condition.
+Having manually identified the relevant time-frames, we create a new dataframe and input the relevant values of elapsed time.
 
 ```{r}
 start_time_df <- data.frame(
@@ -854,9 +583,9 @@ start_time_df <- data.frame(
 rm(every_half_second_df_list)
 ```
 
-Now we will iterate through all the group dataframes and pick the elapsed_time value associated.
+Now we will iterate through all the group dataframes and pick the elapsed_time value associated. First we do this for the gap-filled list:
 
-```{r}
+```{r trimming_gap_filled_list}
 # Iterate through rows of start_time_df and extract subsets
 for (i in 1:nrow(start_time_df)) {
   df_name <- start_time_df$group_and_condition[i]
@@ -885,65 +614,361 @@ for (i in 1:nrow(start_time_df)) {
 
 # Now, list_of_dataframes contains the updated dataframes with the subsets
 
+```
+
+Next we will trim the unfilled list:
+
+```{r trimming_unfilled_list}
+# Iterate through rows of start_time_df and extract subsets
+for (i in 1:nrow(start_time_df)) {
+  df_name <- start_time_df$group_and_condition[i]
+  start_time <- start_time_df$elapsed_time_at_start[i]
+  
+  # Find the corresponding dataframe in list_of_dataframes, if it exists
+  if (df_name %in% names(list_of_dataframes_unfilled)) {
+    # Access the dataframe directly from the list
+    df <- list_of_dataframes_unfilled[[df_name]]
+    
+    # Arrange the dataframe by elapsed_time
+    df <- df %>% dplyr::arrange(elapsed_time)
+    
+    # Extract the subset based on the starting value
+    starting_index <- which(df$elapsed_time == start_time)[1]
+    ending_index <- which(df$elapsed_time == start_time + 30)[1]
+    
+    if (!is.na(starting_index) && !is.na(ending_index)) {
+      # Update the original dataframe in the list with the subset
+      list_of_dataframes_unfilled[[df_name]] <- df[starting_index:ending_index, ]
+    }
+    # No else block needed, if indices are not found, the original dataframe remains unchanged
+  }
+  # No else block needed, if the dataframe does not exist in the list, nothing happens
+}
+
+# Now, list_of_dataframes contains the updated dataframes with the subsets
+
 #cleaning up again! 
 rm(df, df_name, ending_index, first_index, i, start_time, starting_index, start_time_df)
 ```
 
-## Visualising markers' paths
+## Visualising gap-filling on trimmed data
 
-We will iterate through our list of dataframes to see how the gap-fill and trajectory trimming has affected our data.
+First we visualise the untrimmed dataset:
 
 ```{r}
 # Assuming markers_of_interest is defined and has at least 4 elements
+# Assuming gap_fill_linear is a function that performs linear gap filling
+
+for (i in seq_along(list_of_dataframes_unfilled)) {
+  # Access the dataframe
+  df <- list_of_dataframes_unfilled[[i]]
+
+  # Create a combined plot for each group and condition, faceted by marker
+  unique_groups <- unique(df$group)
+  unique_conditions <- unique(df$condition)
+
+  for (group in unique_groups) {
+    for (condition in unique_conditions) {
+      plot_combined <- df %>% 
+        dplyr::filter(group == group, condition == condition, marker %in% markers_of_interest) %>%
+        ggplot(aes(x = elapsed_time, y = x, color = subject)) +
+        geom_line() +
+        scale_color_manual(values= aesthetic_highlight_difference_palette)+
+        facet_wrap(~marker, nrow = 2, ncol = 2) +  # Arrange facets in a 2x2 grid by marker
+        labs(
+          x = "Elapsed time",
+          y = "Marker X position",
+          title = paste("Before Gap-filling"),
+          subtitle = paste("Group:", group, "| Condition:", condition, "- Marker X Positions")
+        )
+      print(plot_combined)
+    }
+  }
+}
+```
+
+There are a couple of errors clearly visible in the plots, that will have an impact on our analysis. For instance, group 8 gets cut off too early. Meaning the recording was either stopped before it should have been, or has been cut short during the session afterwards.
+
+Then we visualise the data after gap-filling:
+
+```{r}
+# Assuming markers_of_interest is defined and has at least 4 elements
+# Assuming gap_fill_linear is a function that performs linear gap filling
 
 for (i in seq_along(list_of_dataframes)) {
   # Access the dataframe
   df <- list_of_dataframes[[i]]
 
-  # Extract representative 'group' and 'condition' values
-  group_value <- unique(df$group)[1]
-  condition_value <- unique(df$condition)[1]
+  # Create a combined plot for each group and condition, faceted by marker
+  unique_groups <- unique(df$group)
+  unique_conditions <- unique(df$condition)
 
-  # Filter for markers of interest and then create a single plot
-  df_filtered <- df %>% dplyr::filter(marker %in% markers_of_interest)
+  for (group in unique_groups) {
+    for (condition in unique_conditions) {
+      plot_combined <- df %>% 
+        dplyr::filter(group == group, condition == condition, marker %in% markers_of_interest) %>%
+        ggplot(aes(x = elapsed_time, y = x, color = subject)) +
+        geom_line() +
+        scale_color_manual(values= aesthetic_highlight_difference_palette)+
+        facet_wrap(~marker, nrow = 2, ncol = 2) +  # Arrange facets in a 2x2 grid by marker
+        labs(
+          x = "Elapsed time",
+          y = "Marker X position",
+          title = paste("After Gap-filling"),
+          subtitle = paste("Group:", group, "| Condition:", condition, "- Marker X Positions")
+        )
+      print(plot_combined)
+    }
+  }
+}
+```
 
-  # Create one combined plot with facets for each marker
-  plot_combined <- df_filtered %>% 
-    ggplot(aes(x = elapsed_time, y = x, color = subject)) +
-    geom_line() +
-    facet_wrap(~marker, nrow = 2, ncol = 2) +  # Arrange facets only by marker
-    labs(
-      x = "Elapsed time",
-      y = "Marker X position",
-      title = paste("Markers X Positions"),
-      subtitle = paste("Dataframe:", names(list_of_dataframes)[i])
-    )
-  print(plot_combined)
+## NA checking pre-gapfill
 
-  # Save the plot if needed
-  ggsave(
-    plot_combined,
-    filename = paste0(
-      "./results/",
-      names(list_of_dataframes)[i],
-      "_group_",
-      group_value,
-      "_condition_",
-      condition_value,
-      "_x_position.png"),
-    width = 12,
-    height = 10,
-    units = "cm",
-    dpi = 300
-  )
+As clarified prior to gap filling, the following sections were used to choose which markers to include in our analysis. In the following we will use the list of dataframes that have been cut to the relevant 30 seconds yet not gap-filled to give a thorough overview of the actually relevant amount of NAs.
+
+For the most accurate analysis we wanted to include the following markers: Head, both hands and elbows, and chest. We checked for NA's to verify none of these markers have too many NAs.
+
+```{r}
+combined_df <- dplyr::bind_rows(list_of_dataframes_unfilled) %>% 
+  dplyr::ungroup()  
+
+combined_df %>% 
+  dplyr::summarise(Total_NAs = sum(is.na(x)))
+combined_df %>% 
+  dplyr::summarise(Total_NON_NAs = sum(!is.na(x)))
+
+#NA
+na_pre_gap <- combined_df %>%
+  group_by(marker) %>%
+  summarise(na_count = sum(is.na(x))) %>% 
+  arrange(na_count)
+
+#NON NA
+non_na_pre_gap <-combined_df %>%
+  group_by(marker) %>%
+  summarise(non_na_count = sum(!is.na(x))) %>% 
+  arrange(non_na_count)
+
+print(na_pre_gap)
+print(non_na_pre_gap)
+
+rm(non_na_pre_gap, na_pre_gap)
+```
+
+### Identifying who has an extra headmarker
+
+We noticed that head_top didn't have a lot of NA's, so we checked whether or not it was the extra marker for A
+
+```{r checking to see which markers B have}
+  list_of_dataframes_unfilled$group0_jointlead %>%
+  dplyr::filter(subject == "B") %>%
+  distinct(marker)
+
+## Subject B has no head_top heheheheheee
+```
+
+head_top does not appear as a marker in the list, given subject B was only given 2 dots on their head and A was given two; therefore, head_top is the "missing" marker and we therefore cannot use it to compare subjects.
+
+## Visualising the NAs
+
+```{r}
+# Combine all dataframes in list_of_dataframes into one dataframe
+combined_df <- dplyr::bind_rows(list_of_dataframes_unfilled, .id = "group")
+
+# Identifying columns with NAs and processing
+na_columns <- colnames(combined_df)[colSums(is.na(combined_df)) > 0]
+columns_to_summarize <- c("marker", na_columns, "group", "condition")
+
+# Summarize the number of NAs for each marker
+result <- combined_df %>%
+  dplyr::select(dplyr::all_of(columns_to_summarize)) %>%
+  dplyr::group_by(group, marker, condition) %>%
+  dplyr::summarise(across(everything(), ~ sum(is.na(.))), .groups = "drop") %>%
+  dplyr::arrange(marker, condition)
+
+# Plotting with facet wrap
+p <- ggplot(result, aes(x = marker, y = x, fill = marker)) +
+  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
+  labs(title = "NA's in Combined Dataframes", x = "Marker", y = "Number of NA") +
+  facet_wrap(~ condition) +
+  coord_flip()+
+  scale_fill_manual(values = aesthetic_palette)
+
+# Print the combined plot
+print(p)
+rm(p, result, columns_to_summarize, na_columns)
+```
+
+```{r}
+# Now we can get the longest sequence of NAs for each marker
+# Function to calculate the longest NA run length
+max_na_run_length <- function(vec) {
+  rle_na <- rle(is.na(vec))
+  max(rle_na$lengths[rle_na$values], na.rm = TRUE, default = 0)
 }
 
-rm(group, group_value, i, unique_conditions, unique_groups, condition, condition_value, plot_combined, df, df_filtered)
+# Now we can get the longest sequence of NAs for each marker
+longest_na_seq <- combined_df %>% 
+  group_by(condition, marker) %>%
+  summarise(
+    x_length = max_na_run_length(x),
+    .groups = "drop"
+  )
+
+# plot to check if it is acceptable
+longest_na_seq %>% 
+  ggplot(aes(x = marker, y = x_length, fill=marker)) +
+  geom_col(
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  facet_wrap(c(~condition)) +
+  labs(
+    x = "Marker",
+    y = "Longest NA sequence",
+    title = "Longest NA sequence by condition"
+  )+
+  scale_fill_manual(values = aesthetic_palette)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Unfortunately, the elbow markers have a lot of NA's. According to our plots, the head markers are consistently low in NA's, while the distribution of NA's for hands and chest is not consistent throughout the groups, we continue with checking the euclydian distance to further verify the validity of choosing said markers. However, the head_top is only present for participant A, and therefore we must choose either head_left or head_right. Since head_right has fewer NA's and the longest sequence is also smaller, we proceed with head_right
+
+### Euclidean distance
+
+```{r Euclidean distance plots for each marker}
+# Iterate directly over the dataframes in list_of_dataframes
+for (df in list_of_dataframes_unfilled) {
+  # Calculate the euclidean distance between each marker (using x, y, z)
+  # We will do this by subject, marker, and axis
+  marker_distances <- df %>% 
+    dplyr::group_by(subject, marker) %>%
+    dplyr::arrange(index) %>%
+    dplyr::mutate(
+      diff_x = x - dplyr::lag(x, 1),
+      diff_y = y - dplyr::lag(y, 1),
+      diff_z = z - dplyr::lag(z, 1)
+    ) %>%
+    dplyr::mutate(
+      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+    )
+
+  # Plot the series for each marker, and see if anything stands out
+  plot <- ggplot(marker_distances, aes(x = index, y = euclidean_distance)) +
+    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
+    theme_minimal() +
+    facet_wrap(~condition + subject) +
+    labs(
+      x = "Index",
+      y = "Euclidean distance",
+      title = "Euclidean distance from the previous frame by marker",
+      subtitle = paste( df$group[1], "Condition:", df$condition[1])
+    )+
+  scale_color_manual(values = aesthetic_palette)
+  
+  # Print the plot
+  print(plot)
+}
+rm(df, df_name, marker_distances, plot)
+```
+
+```{r euclidean_distance_selected_markers}
+# Assuming list_of_dataframes is a list of dataframes
+
+for (df in list_of_dataframes_unfilled) {
+  # Calculate the euclidean distance between each marker (using x, y, z)
+  # We will do this by subject, marker, and axis
+  marker_distances <- df %>% 
+    dplyr::group_by(subject, marker) %>%
+    dplyr::arrange(index) %>%
+    dplyr::mutate(
+      diff_x = x - dplyr::lag(x, 1),
+      diff_y = y - dplyr::lag(y, 1),
+      diff_z = z - dplyr::lag(z, 1)
+    ) %>%
+    dplyr::mutate(
+      euclidean_distance = sqrt(diff_x^2 + diff_y^2 + diff_z^2)
+    ) %>%
+    # Filter only the specified markers
+    dplyr::filter(marker %in% c("head_right", "hand_right", "hand_left", "chest"))
+
+  # Plot the series for each marker, and see if anything stands out
+  plot <- ggplot(marker_distances, aes(x = index, y = euclidean_distance)) +
+    geom_line(aes(color = factor(marker)), linewidth = 1.25) +
+    theme_minimal() +
+    facet_wrap(~condition + subject) +
+    labs(
+      x = "Index",
+      y = "Euclidean distance",
+      title = "Euclidean distance from the previous frame by marker",
+      subtitle = paste("Group:", df$group[1], "Condition:", df$condition[1])
+    )+
+  scale_color_manual(values = c("#d8aeb5","#a94f62","#8d5b5a","#2f1a1b"))
+  
+  # Print the plot
+  print(plot)
+}
+rm(df, marker_distances, plot)
+```
+
+### Inspecting the raw data by plotting the x-coordinates
+
+(inspecting to further validate the selection of markers -\> the markers chosen account for most of movement)
+
+```{r for loop that plots x-coordinates for all markers in all groups}
+## Making a for loop that plots x-coordinates for all markers in all groups
+for (df in list_of_dataframes_unfilled) {
+ # Create ggplot
+  plot <- ggplot(df, aes(x = x, y = marker, color = global_fill_colour)) +
+    geom_point() +
+    ggtitle(paste("Group:", df$group[1], "Condition:", df$condition[1]))+
+    scale_color_manual(values = global_fill_colour)+
+    theme(legend.position = "none") 
+  
+  # Print the plot
+  print(plot)
+}
+rm(df, plot)
 ```
 
 It is clear the quality of the dataset differs immensely, and some groups have significantly more NA's than others.
 
-## NA check post trim and gap-fill
+## NA-check only relevant markers pre gap-fill
+
+```{r}
+# Apply the filter to each dataframe in list_of_dataframes
+list_of_dataframes_unfilled <- lapply(list_of_dataframes_unfilled, function(df) {
+  df %>% dplyr::filter(marker %in% markers_of_interest)
+})
+#overwriting the combined
+combined_df <- dplyr::bind_rows(list_of_dataframes_unfilled) %>% 
+  dplyr::ungroup()  
+
+#Totals
+combined_df %>% 
+  dplyr::summarise(Total_NAs = sum(is.na(x)))
+
+combined_df %>% 
+  dplyr::summarise(Total_NON_NAs = sum(!is.na(x)))
+#NA
+
+na_post_gap <- combined_df %>%
+  group_by(marker) %>%
+  summarise(na_count = sum(is.na(x)))
+
+#NON NA
+non_na_post_gap <- combined_df %>%
+  group_by(marker) %>%
+  summarise(non_na_count = sum(!is.na(x)))
+
+print(non_na_post_gap)
+print(na_post_gap)
+
+rm(non_na_post_gap, na_post_gap)
+```
+
+## NA check post gap-fill
 
 ```{r}
 #overwriting the combined with the gap filled from the list
@@ -973,7 +998,7 @@ print(na_post_gap)
 rm(non_na_post_gap, na_post_gap)
 ```
 
-We still have a lot of NA's caused by inadequent registering of markers during experiment. After gap-filling the total NAs have gone from xxxx to 93280
+We still have a lot of NA's caused by inadequent registering of markers during experiment. After gap-filling the total NAs have gone from 169725 to 93280.
 
 \-\-\-\-\-\--
 
@@ -981,7 +1006,7 @@ We still have a lot of NA's caused by inadequent registering of markers during e
 
 ## ICA-preprocessing
 
-In order for ICA to work, our data must be exclusively numeric, meaning we will need to prep dataframes to include only our coordinates. The goal is to get a measure of the subjects movement per time, therefore we split our data into two: A and B. We also omit any NAs. This is subpar, but we have decided it is better to omit NAs entirely rather than apply an average throughout the missing rows - as this migth skew it in favour of looking more synchronised.
+In order for ICA to work, our data must be exclusively numeric, meaning we will need to prep dataframes to include only our coordinates. The goal is to get a measure of the subjects movement per time, therefore we split our data into two: A and B. We also omit any NAs. This is subpar, but we have decided it is better to omit NAs entirely rather than apply an average throughout the missing rows - as this might skew it in favour of looking more synchronised.
 
 ```{r}
 list_of_dataframes_A <- list()
@@ -1012,8 +1037,6 @@ rm(df, df_A, df_B, i, df_name)
 Now that we have split our data, we need to convert it into a matrix with xyz coordinates where each row is a time-frame. In order to do this, we need to go back to a wider format, where each row is a single time point. This means each marker x y z will take up columns. We exclude elapsed_time, because it will be represented row-by-row. We also need to ungroup the dataframe, otherwise we can't remove columns. Furthermore, once changed to matrix, we have no choice but to impute NA or discard all rows with NAs, which is not viable.
 
 ```{r}
-library(dplyr)
-
 # Define a function to replace NAs with column means
 replace_nas_with_column_means <- function(df) {
   df %>%
@@ -1046,30 +1069,29 @@ for (i in seq_along(list_of_dataframes_B)) {
 rm(i)
 ```
 
-Now we are ready to convert to matrix:
+Now we are ready to convert to matrix, we also standardize as a step in this function with scale(). ICA often benefit from having its features on the same scale, and therefore standardising before running ICA is good practise.
 
 ```{r}
-library(dplyr)
-
-# Function to convert a dataframe to a matrix for ICA
-convert_df_to_matrix <- function(df) {
+# Function to convert a dataframe to a matrix with standardized values for ICA
+convert_df_to_matrix_for_ICA <- function(df) {
     # Ensure the dataframe is sorted by elapsed_time
     df_sorted <- df %>% arrange(elapsed_time)
 
-    # Select only numeric columns (except 'elapsed_time' if it's not numeric)
-    # and keep 'elapsed_time' as the first column
-    numeric_cols <- sapply(df_sorted, is.numeric)
-    df_matrix <- df_sorted %>% select(elapsed_time, where(is.numeric))
+    # Select only numeric columns
+    df_numeric <- df_sorted %>% select(where(is.numeric))
 
-    return(as.matrix(df_matrix))
+    # Standardize the data
+    df_standardized <- as.data.frame(scale(df_numeric))
+
+    # Return as matrix
+    return(as.matrix(df_standardized))
 }
 
-# Convert each dataframe in list_of_dataframes_A to a matrix
-matrices_A <- lapply(list_of_dataframes_A, convert_df_to_matrix)
+# Convert each dataframe in list_of_dataframes_A to a matrix for ICA
+matrices_A <- lapply(list_of_dataframes_A, convert_df_to_matrix_for_ICA)
 
-# Convert each dataframe in list_of_dataframes_B to a matrix
-matrices_B <- lapply(list_of_dataframes_B, convert_df_to_matrix)
-
+# Convert each dataframe in list_of_dataframes_B to a matrix for ICA
+matrices_B <- lapply(list_of_dataframes_B, convert_df_to_matrix_for_ICA)
 ```
 
 ```{r}
@@ -1081,9 +1103,23 @@ any(is.na(unlist(matrices_B)))
 
 ```
 
+## Deciding on amount of components
+
+We want to make sure we select the optimal amount of components to describe each subjects motion.
+
+```{r}
+
+```
+
 ## Running ICA
 
-Though we may lose some data-complexity, we decide to extract only 1 component.
+Though we may lose some data-complexity, we decide to extract only 1 component. Furthermore, ICA sometimes flips data as it does not inherently know which direction the data faces. This is a big issue when using ICA before dynamtic time warping, as we need to make sure both components A and B have the same direction.
+
+Since we know the components represent synchrony we compute the area between the components in all configurations, and choose the configuration where the area is the smallest. In other words, the components will be flipped in a way to consistently be close to eachother and therefore this should result in them being faced "the same way". This method only works because we know the nature of the components is to attempt to follow eachother for A and B.
+
+We will discuss using ICA with motion capture data as a method in the discussion.
+
+First we apply ICA on the matrix:
 
 ```{r}
 # Function to apply ICA on a matrix
@@ -1109,68 +1145,94 @@ ica_results_A <- lapply(matrices_A, apply_ica, n_comp = 1)  # Adjust n.comp as n
 
 # Apply ICA on matrices in list_of_dataframes_B
 ica_results_B <- lapply(matrices_B, apply_ica, n_comp = 1)  # Adjust n.comp as needed
-rm(list_of_dataframes_A, list_of_dataframes_B)
-```
 
-```{r}
-# Extracting the independent components
 component_list_A <- lapply(ica_results_A, function(ica) ica$S)
 component_list_B <- lapply(ica_results_B, function(ica) ica$S)
 
 rm(ica_results_A, ica_results_B)
 ```
 
-Now we visualise the components, to make it clear which representations of motion each subject has.
+Next we calculate the area between the components and pick the combination which results in the smallest area: in our case that must be the case where they are aligned.
 
 ```{r}
-library(ggplot2)
+# Function to calculate the area between two components, aligning their lengths
+calculate_area_between_components <- function(comp1, comp2) {
+  # Align lengths
+  min_length <- min(nrow(comp1), nrow(comp2))
+  comp1_aligned <- comp1[1:min_length, ]
+  comp2_aligned <- comp2[1:min_length, ]
 
-# Visualizing the first component of the first subject in list A
-component_to_visualize_A <- component_list_A[[1]]  # Adjust the index as needed
+  # Calculate area
+  sum(abs(comp1_aligned - comp2_aligned))
+}
 
-# Creating a time series plot for Subject A
-ggplot(data.frame(time = 1:nrow(component_to_visualize_A), value = component_to_visualize_A[, 1]), aes(x = time, y = value)) +
-  geom_line(size = 1) +  # Adjust the size for line thickness
-  theme_minimal() +
-  labs(title = "Independent Component - Subject A", x = "Time", y = "Component Value")
+# Function to align a component based on the smallest area between lines
+align_component_based_on_area <- function(component_A, component_B) {
+  # Align component lengths for area calculation
+  original_area <- calculate_area_between_components(component_A, component_B)
+  flipped_area <- calculate_area_between_components(component_A, -component_B)
 
-# Visualizing the first component of the first subject in list B
-component_to_visualize_B <- component_list_B[[1]]  # Adjust the index as needed
+  if (flipped_area < original_area) {
+    return(-component_B)
+  } else {
+    return(component_B)
+  }
+}
 
-# Creating a time series plot for Subject B
-ggplot(data.frame(time = 1:nrow(component_to_visualize_B), value = component_to_visualize_B[, 1]), aes(x = time, y = value)) +
-  geom_line(size = 1)+
-  theme_minimal() +
-  labs(title = "Independent Component - Subject B", x = "Time", y = "Component Value")
+# Align each pair of components from A and B
+for (i in seq_along(component_list_A)) {
+  if (!is.null(component_list_A[[i]]) && !is.null(component_list_B[[i]])) {
+    component_list_B[[i]] <- align_component_based_on_area(component_list_A[[i]], component_list_B[[i]])
+  }
+}
 
 
-rm(component_to_visualize_A, component_to_visualize_B)
+# Clean up
+rm(list_of_dataframes_A, list_of_dataframes_B)
+
 ```
 
-Now we get each components per condition into a common plot, effectively making it easier to visualise their pathways as a last step before DTW
+Now we visualise the components per condition in a common plot, to make it clear which representations of motion each subject has, effectively making it easier to visualise their pathways as a last step before DTW.
 
 ```{r}
-# Assuming component_list_A and component_list_B are lists of independent components
-component_A <- component_list_A[[1]]
-component_B <- component_list_B[[1]]
+# Loop through each index of the component lists
+for (i in seq_along(component_list_A)) {
+  # Extract components for Subject A and Subject B
+  component_A <- component_list_A[[i]]
+  component_B <- component_list_B[[i]]
 
-# Find the minimum number of rows between the two components
-min_rows <- min(nrow(component_A), nrow(component_B))
+  # Ensure both components have the same number of rows
+  min_rows <- min(nrow(component_A), nrow(component_B))
 
-# Combine both components into a single dataframe with the minimum number of rows
-combined_df <- data.frame(
-  time = rep(1:min_rows, 2),
-  value = c(component_A[1:min_rows, 1], component_B[1:min_rows, 1]),
-  group = rep(c("Subject A", "Subject B"), each = min_rows)
-)
+  # Combine both components into a single dataframe
+  combined_df <- data.frame(
+    time = rep(1:min_rows, 2),
+    value = c(component_A[1:min_rows, 1], component_B[1:min_rows, 1]),
+    group = rep(c("Subject A", "Subject B"), each = min_rows)
+  )
 
-# Creating a time series plot for both subjects
-ggplot(combined_df, aes(x = time, y = value, color = group)) +
-  geom_line(size = 1) +
-  theme_minimal() +
-  labs(title = "Independent Components - Subjects A and B", x = "Time", y = "Component Value")
+  # Create a time series plot for both subjects
+  component_name_A <- names(component_list_A)[i]
+  component_name_B <- names(component_list_B)[i]
+  group_number <- paste(component_name_A, "vs", component_name_B)
+
+  
+  p <- ggplot(combined_df, aes(x = time, y = value, color = group)) +
+    geom_line(size = 1) +
+    labs(
+      title = "Independent components", 
+      subtitle = group_number,
+         x = "Time", y = "Component Value", color = "Subject") +
+    scale_color_manual(values = aesthetic_highlight_difference_palette)
+
+  # Print the plot
+  print(p)
+}
+
 
 ```
+
+OBS: CHECK GROUP 12 LEADFOLLOW, GROUP 13 JOINTLEAD & LEADFOLLOW, GROUP 6 JOINTLEAD, -\> ARE THE COMPONENTS NOT REFLECTIVE OF WHATS GOING ON OR ARE THEY JUST REALLY BAD AT JOINT MOTION.
 
 # DTW: Dynamic Time Warping
 
@@ -1218,30 +1280,226 @@ print(dtw_results_df)
 
 ```
 
-This was just to check manually, that the for loop calculated DTW correctly
+## Visualising
 
-```{r}
-## Doing DTW
-dtw_result <- dtw::dtw(component_list_A[[9]], component_list_B[[9]], keep = TRUE)
+### Testing step patterns
 
-# Access the distance
-dtw_distance <- dtw_result$distance
+```{r testing_step_patterns}
+i<- 6
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=rabinerJuangStepPattern(6,"c")),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
 
-# Print the DTW distance
-print(paste("DTW Distance:", dtw_distance))
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=symmetricP1),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=symmetricP2),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
+
+plot(
+    dtw(component_list_A[[i]],component_list_B[[i]],
+        keep=TRUE,
+        step=rabinerJuangStepPattern(7,"b")),
+        col = aesthetic_highlight_difference_palette,
+         lty = c(1, 1),
+         lwd = c(6, 6),
+        type="twoway",offset=-2)
 ```
 
-Taking the mean of DTW for all groups to get a baseline
+### Visualising all pairs:
+
+```{r twoway}
+for (i in seq_along(component_list_A)) {
+    # TWO WAY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             keep = TRUE,
+             step = rabinerJuangStepPattern(6, "c")),
+         type = "twoway",
+         lty = c(1, 1),
+         lwd = c(6, 6),
+         offset = -2,
+         col = aesthetic_highlight_difference_palette)
+
+    # THREE WAY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             k = TRUE),
+         type = "threeway",
+         off = 1,
+         match.lty = 2,
+         col = aesthetic_highlight_difference_palette)
+
+    # DENSITY plot
+    plot(dtw(component_list_A[[i]],
+             component_list_B[[i]],
+             k = TRUE),
+         type = "density",
+         off = 1,
+         match.lty = 2)
+}
+
+```
+
+This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others.
+
+Kat's answer:
+
+I have found 3 different step patterns: Sakoe-chiba Band, Itakura Parallelogram and then Rabiner Juang (the one Luke is using), but it seems like you can define your own custom step pattern as well - that might be the most common? Anyways GPT says "The one you are currently using is typically used for speech recognition. It's good for sequences where one sequence may have more variance in timing or speed than the other."
+
+## False-pairs
+
+Having given each pair a score for their synchrony, we must now explore if this score is significant or not. We will do this by establishing false-pairs, looking at each subject A with all other subject B and scoring them. This will result in a spectrum of synchrony that is hopefully normally distrubuted. We will then see that the score for the correct pair is statistically significant.
+
+We first look at the jointlead condition
+
+```{r}
+# Initialize vectors to store results
+dtw_distances <- numeric(0)
+component_a_names <- character(0)
+component_b_names <- character(0)
+
+# Loop through each element of component_list_A
+for (a_name in names(component_list_A)) {
+    if (grepl("_jointlead_A$", a_name)) {
+        component_a <- component_list_A[[a_name]]
+
+        # Loop through each element of component_list_B for every qualifying component in component_list_A
+        for (b_name in names(component_list_B)) {
+            if (grepl("_jointlead_B$", b_name)) {
+                # Perform DTW comparison
+                dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
+                
+                # Store DTW distance and corresponding A and B component names
+                dtw_distances <- c(dtw_distances, dtw_result$distance)
+                component_a_names <- c(component_a_names, a_name)
+                component_b_names <- c(component_b_names, b_name)
+            }
+        }
+    }
+}
+
+# Create a data frame with results if any comparisons were made
+if (length(dtw_distances) > 0) {
+    dtw_results_df_jointlead <- data.frame(
+        Component_A = component_a_names, 
+        Component_B = component_b_names, 
+        DTW_Distance = dtw_distances
+    )
+    print(dtw_results_df_jointlead)
+} else {
+    cat("No matching pairs found for '_jointlead_A' and '_jointlead_B'")
+}
+
+```
+
+```{r}
+# Initialize vectors to store results
+dtw_distances <- numeric(0)
+component_a_names <- character(0)
+component_b_names <- character(0)
+
+# Loop through each element of component_list_A
+for (a_name in names(component_list_A)) {
+    if (grepl("_leadfollow_A$", a_name)) {
+        component_a <- component_list_A[[a_name]]
+
+        # Loop through each element of component_list_B for every qualifying component in component_list_A
+        for (b_name in names(component_list_B)) {
+            if (grepl("_leadfollow_B$", b_name)) {
+                # Perform DTW comparison
+                dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
+                
+                # Store DTW distance and corresponding A and B component names
+                dtw_distances <- c(dtw_distances, dtw_result$distance)
+                component_a_names <- c(component_a_names, a_name)
+                component_b_names <- c(component_b_names, b_name)
+            }
+        }
+    }
+}
+
+# Create a data frame with results if any comparisons were made
+if (length(dtw_distances) > 0) {
+    dtw_results_df_leadfollow <- data.frame(
+        Component_A = component_a_names, 
+        Component_B = component_b_names, 
+        DTW_Distance = dtw_distances
+    )
+    print(dtw_results_df_leadfollow)
+} else {
+    cat("No matching pairs found for '_leadfollow_A' and '_leadfollow_B'")
+}
+
+```
+
+Now joining the two dataframes together
+
+```{r}
+# Combine the two dataframes
+false_pairs_df <- rbind(dtw_results_df_leadfollow, dtw_results_df_jointlead)
+
+rm(dtw_results_df_jointlead, dtw_results_df_leadfollow)
+```
+
+```{r}
+# Loop over each unique value in the 'Component A' column
+for (comp_a in unique(false_pairs_df$Component_A)) {
+    # Filter the dataframe for the current component
+    filtered_df <- subset(false_pairs_df, Component_A == comp_a)
+
+    # Create a density plot
+    p <- ggplot(filtered_df, aes(x = DTW_Distance)) +
+        geom_density(fill = global_fill_colour, alpha = 0.5) +
+      labs(
+        title = paste("Density Plot of DTW Distances for Component A:"),
+        subtitle = comp_a)
+
+    # Display the plot
+    print(p)
+}
+
+# Loop over each unique value in the 'Component B' column
+for (comp_b in unique(false_pairs_df$Component_B)) {
+    # Filter the dataframe for the current component
+    filtered_df <- subset(false_pairs_df, Component_B == comp_b)
+
+    # Create a density plot
+    p <- ggplot(filtered_df, aes(x = DTW_Distance)) +
+        geom_density(fill = global_fill_colour, alpha = 0.5) +
+      labs(
+        title = paste("Density Plot of DTW Distances for Component B:"),
+        subtitle = comp_b)
+
+    # Display the plot
+    print(p)
+}
+```
+
+## Real pairs
+
+Taking the mean of DTW for all groups to get a baseline and checking which groups are below the mean and therefore high in similarity.
 
 ```{r}
 DTW_mean <- mean(dtw_results_df$DTW_Distance) 
 
 print(paste("mean:", DTW_mean))
-```
-
-Checking which groups are below the mean and therefore high in similariy
-
-```{r}
 for (i in seq_along(dtw_results_df$DTW_Distance)) {
   dtw_distance <- dtw_results_df$DTW_Distance[i]
   if (dtw_distance <= DTW_mean) {
@@ -1252,60 +1510,21 @@ for (i in seq_along(dtw_results_df$DTW_Distance)) {
 }
 ```
 
-## Visualising
-
-Alright, so after sitting with it for a while, I figured out there are 4 types of plots, we can make for dynamic time warping: 1. twoway 2. threeway 3. alignment 4. density
-
-```{r twoway}
-plot(dtw(component_list_A[[9]],
-         component_list_B[[9]],
-         k=TRUE),
-         type="twoway",
-         off=1,
-         match.lty=2,
-         match.indices=20) ## this argument makes the plot look very nice, but is not a true representation of the step pattern sadly, try removing it and see what happens
+```{r}
+dtw_results_df %>%
+  ggplot(aes(x = DTW_Distance)) +
+  geom_density(fill = global_fill_colour, alpha = 0.5) +  # Add fill color and adjust transparency
+  labs(
+    title = "Density Plot of DTW Distances",
+    x = "DTW Distance",
+    y = "Density"
+  ) 
 ```
 
-```{r threeway}
-plot(dtw(component_list_A[[9]],
-         component_list_B[[9]],
-         k=TRUE),
-         type="threeway",
-         off=1,
-         match.lty=2,
-         col = c("blue", "pink"))
-```
+# Exporting the synchrony scores
 
-```{r alignment}
-plot(dtw(component_list_A[[9]],
-         component_list_B[[9]],
-         k=TRUE),
-         type="alignment",
-         off=1,
-         match.lty=2,
-         col = c("blue", "pink"))
-```
-
-```{r density}
-plot(dtw(component_list_A[[9]],
-         component_list_B[[9]],
-         k=TRUE),
-         type = "density",
-         off=1,
-         match.lty=2)
-```
-
-This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others.
+In order to compare this to each pairs empathy score, we export as a csv to be used in another RMD
 
 ```{r}
-plot(
-    dtw(component_list_A[[9]],component_list_B[[9]],
-        keep=TRUE,
-        step=rabinerJuangStepPattern(6,"c")),
-        col = c("pink","blue"),
-         lty = c(1, 1),
-         lwd = c(6, 6),
-        type="twoway",offset=-2)
+write_csv(dtw_results_df, "data/dtw_results.csv")
 ```
-
-## False-pairs
