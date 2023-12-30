@@ -41,17 +41,12 @@ pacman::p_load(
 )
 
 #Aesthetic setup
-<<<<<<< Updated upstream
-theme_set(theme_ipsum())
-global_fill_colour <- "#0e3b85"
-aesthetic_palette <- c("#624C40","#97986E","#CBAF9A","#93703B","#9E2825")
-=======
-theme_set(theme_minimal())
+theme_set(theme_ipdum())
 global_fill_colour <- "#8d5b5a"
 aesthetic_palette <- c(
   "#d8aeb5","#c17f8c","#b59592","#9b6f69","#a94f62","#8d5b5a","#684141","#733545","#523438","#48222b","#2f1a1b")
 aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
->>>>>>> Stashed changes
+
 ```
 
 # Pre-processing
@@ -90,11 +85,6 @@ empathy_questionnaire <- empathy_questionnaire %>%
   mutate(across(starts_with("question:"), ~as.numeric(str_replace_all(., "[^0-9]", ""))))
 ```
 
-## Eye movement data
-
-<<<<<<< Updated upstream
-```{r eye_data}
-=======
 In order to account for experience with dance we score each participant according to their answers on the survey. We select all questions from Factor 1 and factor 2, and extract only the numeric values (discard characters such as "completely agree" and leave the numeric codes corresponding to such characters).
 
 ```{r dance_data}
@@ -111,7 +101,6 @@ dance_survey <- read_csv('data/PercAct23_Mocap_personality_questionnaires.csv')%
     `Participant ID` == "H7" ~ "A13",
     TRUE ~ `Participant ID`  # If no match, keep the original value
   )) 
->>>>>>> Stashed changes
 
 dance_survey <- dance_survey %>% 
   select(
@@ -128,12 +117,8 @@ dance_survey <- dance_survey %>%
 ## Motion Capture
 
 ```{r motion_data}
-<<<<<<< Updated upstream
-
-=======
 synchrony_scores_PCA <- read_csv("results/dtw_results_PCA.csv")
 synchrony_scores_ICA <- read_csv("results/dtw_results_ICA.csv")
->>>>>>> Stashed changes
 ```
 
 # Exploratory data-analysis
@@ -281,9 +266,6 @@ empathy_questionnaire %>%
 
 
 ```
-<<<<<<< Updated upstream
-=======
-
 # Dance Sophistication Scoring
 
 We give each participant a score for body awareness and a score for social dancing according to the GOLD-dsi (The Goldsmiths Dance Sophistication Index) P1 and P2. In similar fashion to EQ-22, some questions count reversed, so we begin by defining those in accordance to the appendix in [GOLD-dsi](https://research.gold.ac.uk/id/eprint/29282/16/2020-80492-001.pdf)
@@ -741,4 +723,4 @@ ggplot(ran_ef, aes(x = rownames(ran_ef), y = `(Intercept)`)) +
 ```
 
 # Final interpretation
->>>>>>> Stashed changes
+
