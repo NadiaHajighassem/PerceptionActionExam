@@ -175,8 +175,7 @@ for (i in seq_along(component_list_A)) {
     # TWO WAY plot
     plot(dtw(component_list_A[[i]],
              component_list_B[[i]],
-             keep = TRUE,
-             step = rabinerJuangStepPattern(6, "c")),
+             k = TRUE), ### symmetricP2 is the default step pattern, that gets added when you put no argument for step pattern. 
          type = "twoway",
          lty = c(1, 1),
          lwd = c(6, 6),
@@ -202,12 +201,6 @@ for (i in seq_along(component_list_A)) {
 }
 
 ```
-
-This is a plot with a specificed step-pattern. I dont think we have to do this for the exam, as i saw Luuk not doing it and the differences between the step pattern seems quite hard to interpret on the internet. But to be fair, it looks pretty awesome, but there are a lot of other step-patterns out there and i am not sure, that this is the correct one to use for our data. Especially because this step pattern looks awesome with this group, but looks terrible with others.
-
-Kat's answer:
-
-I have found 3 different step patterns: Sakoe-chiba Band, Itakura Parallelogram and then Rabiner Juang (the one Luke is using), but it seems like you can define your own custom step pattern as well - that might be the most common? Anyways GPT says "The one you are currently using is typically used for speech recognition. It's good for sequences where one sequence may have more variance in timing or speed than the other."
 
 ## False-pairs
 
