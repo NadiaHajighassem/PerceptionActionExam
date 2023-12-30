@@ -4,6 +4,7 @@ author: "Katharina Hellmund"
 date: "2023-12-29"
 output: pdf_document
 ---
+
 ```{r setup}
 ## Setup chunk
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)

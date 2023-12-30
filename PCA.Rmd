@@ -254,7 +254,7 @@ pca_components_list_A <- list()
 pca_components_list_B <- list()
 
 # Define the number of principal components to use
-num_pca_components_to_use <- 2  # You can adjust this as needed
+num_pca_components_to_use <- 1  # You can adjust this as needed
 
 for (i in 1:16) {
     if (i <= length(list_of_dataframes_A)) {
@@ -269,8 +269,8 @@ for (i in 1:16) {
         pca_results_list_A[[df_name_A]] <- pca_A
         
         # Extract and store principal components with dataframe name as key
-        pca_components_A <- pca_A$ind$coord[, 1:num_pca_components_to_use]
-        pca_components_list_A[[df_name_A]] <- pca_components_A
+pca_components_A <- pca_A$ind$coord[, 1:num_pca_components_to_use, drop = FALSE]
+pca_components_list_A[[df_name_A]] <- pca_components_A
     }
 
     if (i <= length(list_of_dataframes_B)) {
@@ -285,8 +285,8 @@ for (i in 1:16) {
         pca_results_list_B[[df_name_B]] <- pca_B
         
         # Extract and store principal components with dataframe name as key
-        pca_components_B <- pca_B$ind$coord[, 1:num_pca_components_to_use]
-        pca_components_list_B[[df_name_B]] <- pca_components_B
+        pca_components_B <- pca_B$ind$coord[, 1:num_pca_components_to_use, drop = FALSE]
+pca_components_list_B[[df_name_B]] <- pca_components_B
     }
 }
 
@@ -325,11 +325,22 @@ align_component_based_on_area <- function(component_A, component_B) {
   }
 }
 
-# Align each pair of components from A and B
-for (i in seq_along(pca_components_list_A)) {
-  if (!is.null(pca_components_list_A[[i]]) && !is.null(pca_components_list_B[[i]])) {
-    pca_components_list_B[[i]] <- align_component_based_on_area(pca_components_list_A[[i]], pca_components_list_B[[i]])
+#THERE ARE ISSUERS WITH VERY LARGE VECTORS. IM TRYING TO COMBAT THAT PROBLEM HERE
+
+batch_size <- 100  # Set a batch size that your system can handle
+num_batches <- ceiling(length(pca_components_list_A) / batch_size)
+
+for (batch in 1:num_batches) {
+  start_index <- (batch - 1) * batch_size + 1
+  end_index <- min(batch * batch_size, length(pca_components_list_A))
+
+  for (i in start_index:end_index) {
+    if (!is.null(pca_components_list_A[[i]]) && !is.null(pca_components_list_B[[i]])) {
+      pca_components_list_B[[i]] <- align_component_based_on_area(pca_components_list_A[[i]], pca_components_list_B[[i]])
+    }
   }
+
+  # Optional: Save intermediate results to disk, clear memory, etc.
 }
 
 
@@ -368,7 +379,7 @@ for (i in seq_along(pca_components_list_A)) {
   p <- ggplot(combined_df, aes(x = time, y = value, color = group)) +
     geom_line(size = 1) +
     labs(
-      title = "Independent components", 
+      title = "Princeple components", 
       subtitle = group_number,
          x = "Time", y = "Component Value", color = "Subject") +
     scale_color_manual(values = aesthetic_highlight_difference_palette)
