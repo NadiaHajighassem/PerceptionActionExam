@@ -373,13 +373,13 @@ for (i in seq_along(pca_components_list_A)) {
   # Create a time series plot for both subjects
   component_name_A <- names(pca_components_list_A)[i]
   component_name_B <- names(pca_components_list_B)[i]
-  group_number <- paste(component_name_A, "vs", component_name_B)
+  group_number <- paste(component_name_A)
 
   
   p <- ggplot(combined_df, aes(x = time, y = value, color = group)) +
     geom_line(size = 1) +
     labs(
-      title = "Princeple components", 
+      title = "Principle components", 
       subtitle = group_number,
          x = "Time", y = "Component Value", color = "Subject") +
     scale_color_manual(values = aesthetic_highlight_difference_palette)
