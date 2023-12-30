@@ -296,6 +296,18 @@ pca_components_list_B[[df_name_B]] <- pca_components_B
 # with dataframe names as keys
 
 rm(corr_matrix_A, corr_matrix_B, df, df_A, df_B, pca_A, pca_B)
+   
+```
+
+## Scree plots 
+```{r}
+g <- list_of_dataframes$group1_jointlead # You can change groups here 
+
+corr_matrix <- cor(g)
+
+data.pca <- princomp(corr_matrix)
+
+fviz_eig(data.pca, addlabels = TRUE)
 ```
 
 Next we calculate the area between the components and pick the combination which results in the smallest area: in our case that must be the case where they are aligned. we do this to ensure there is no sign ambiguity when running PCA. We can justify doing this as the goal of the task was to mirror eachother, and it is highly unlikely any participant was doing the opposite of their partner.
