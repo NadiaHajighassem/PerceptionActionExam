@@ -62,8 +62,8 @@ aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
 components_dir <- "results/PCA"
 
                   #IMPORTING ALL COMPONENTS FROM A#
-# List all CSV files in the directory that include "_A_" in their names
-component_files_A <- fs::dir_ls(path = components_dir, glob = "*_A_*.csv")
+# List all CSV files in the directory that include "_A" in their names
+component_files_A <- fs::dir_ls(path = components_dir, glob = "*_A.csv")
 
 component_list_A <- list()
 
@@ -77,8 +77,8 @@ for (csv_file in component_files_A) {
 }
 
                   #IMPORTING ALL COMPONENTS FROM B#
-# List all CSV files in the directory that include "_B_" in their names
-component_files_B <- fs::dir_ls(path = components_dir, glob = "*_B_*.csv")
+# List all CSV files in the directory that include "_B" in their names
+component_files_B <- fs::dir_ls(path = components_dir, glob = "*_B.csv")
 
 component_list_B <- list()
 
@@ -383,4 +383,5 @@ In order to compare this to each pairs empathy score, we export as a csv to be u
 
 ```{r}
 write_csv(dtw_results_df, "results/dtw_results_PCA.csv")
+write_csv(false_pairs_df, "results/false_pairs_PCA.csv")
 ```

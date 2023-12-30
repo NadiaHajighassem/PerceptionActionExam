@@ -315,25 +315,31 @@ OBS: CHECK GROUP 12 LEADFOLLOW, GROUP 13 JOINTLEAD & LEADFOLLOW, GROUP 6 JOINTLE
 We will now save the components to be tested with dynamic time warping in a seperate markdown. We will save both the lists of components in respective folders
 
 ```{r}
-# Ensure the fs package is loaded
 library(fs)
 
 # Create the "results/ICA" directory if it doesn't already exist
 dir_create(path("results", "ICA"), recursive = TRUE)
 
 # Function to save each matrix in the component list as a CSV
-save_component_list_as_csv <- function(component_list, dir_path, prefix) {
-  for (i in seq_along(component_list)) {
-    file_path <- file.path(dir_path, paste0(prefix, "_", i, ".csv"))
-    write.csv(component_list[[i]], file_path, row.names = FALSE)
+save_component_list_as_csv <- function(component_list, dir_path) {
+  # Ensure component_list has named indices
+  if (is.null(names(component_list))) {
+    stop("The component list must have named indices.")
   }
+
+  for (comp_name in names(component_list)) {
+    # Use the component name for the file name
+    file_path <- file.path(dir_path, paste0(comp_name, ".csv"))
+    write.csv(component_list[[comp_name]], file_path, row.names = FALSE)
+  }
+
+  # Print a message to indicate completion
+  cat("All components have been saved as CSV in the '", dir_path, "' directory.\n")
 }
 
-# Save component_list_A and component_list_B to "results/ICA" as CSV files
-save_component_list_as_csv(component_list_A, "results/ICA", "component_A")
-save_component_list_as_csv(component_list_B, "results/ICA", "component_B")
-
-# Print a message to indicate completion
-cat("All components have been saved as CSV in the 'results/ICA' directory.\n")
+# Example usage: Save component_list_A and component_list_B to "results/ICA" as CSV files
+# Ensure that component_list_A and component_list_B have named indices
+save_component_list_as_csv(component_list_A, "results/ICA")
+save_component_list_as_csv(component_list_B, "results/ICA")
 
 ```

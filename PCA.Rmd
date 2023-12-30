@@ -299,16 +299,41 @@ rm(corr_matrix_A, corr_matrix_B, df, df_A, df_B, pca_A, pca_B)
    
 ```
 
-## Scree plots 
+## Scree plots
+
 ```{r}
-g <- list_of_dataframes$group1_jointlead # You can change groups here 
+library(factoextra)
+library(hrbrthemes) # for theme_ipsum()
 
-corr_matrix <- cor(g)
+# Assuming global_fill_colour is defined
 
-data.pca <- princomp(corr_matrix)
+# Loop through each dataframe in list_of_dataframes
+for (df_name in names(list_of_dataframes)) {
+  # Extract the current dataframe
+  g <- list_of_dataframes[[df_name]]
 
-fviz_eig(data.pca, addlabels = TRUE)
+  # Compute correlation matrix and perform PCA
+  corr_matrix <- cor(g)
+  data.pca <- princomp(corr_matrix)
+
+  # Create the scree plot
+  scree_plot <- fviz_eig(data.pca,
+                         ncp = 5,
+                         addlabels = TRUE, 
+                         barfill = global_fill_colour, 
+                         barcolor = global_fill_colour, 
+                         ggtheme = theme_ipsum()) +
+               ylim(0, 90) +
+               labs(subtitle = df_name) # Add dynamic subtitle
+
+  # Display or save the plot
+  print(scree_plot)
+  # To save: ggsave(paste0("ScreePlot_", df_name, ".png"), scree_plot)
+}
+
 ```
+
+## Bug fix: PCA sign ambiguity
 
 Next we calculate the area between the components and pick the combination which results in the smallest area: in our case that must be the case where they are aligned. we do this to ensure there is no sign ambiguity when running PCA. We can justify doing this as the goal of the task was to mirror eachother, and it is highly unlikely any participant was doing the opposite of their partner.
 
@@ -420,25 +445,32 @@ OBS: LOOK AT ORIGINAL FOOTAGE FROM:
 All components are saved in a folder to later be processed using DTW.
 
 ```{r}
-# Ensure the fs package is loaded
 library(fs)
 
 # Create the "results/PCA" directory if it doesn't already exist
 dir_create(path("results", "PCA"), recursive = TRUE)
 
-# Function to save each matrix in the component list as a CSV
-save_component_list_as_csv <- function(component_list, dir_path, prefix) {
-  for (i in seq_along(component_list)) {
-    file_path <- file.path(dir_path, paste0(prefix, "_", i, ".csv"))
-    write.csv(component_list[[i]], file_path, row.names = FALSE)
+# Function to save each matrix in the component list as a CSV with an optional suffix
+save_component_list_as_csv <- function(component_list, dir_path, suffix = "") {
+  # Ensure component_list has named indices
+  if (is.null(names(component_list))) {
+    stop("The component list must have named indices.")
   }
+
+  for (comp_name in names(component_list)) {
+    # Use the component name for the file name, appending the suffix
+    file_path <- file.path(dir_path, paste0(comp_name, suffix, ".csv"))
+    write.csv(component_list[[comp_name]], file_path, row.names = FALSE)
+  }
+
+  # Print a message to indicate completion
+  cat("All components have been saved as CSV in the '", dir_path, "' directory.\n")
 }
 
 # Save pca_components_list_A and pca_components_list_B to "results/PCA" as CSV files
-save_component_list_as_csv(pca_components_list_A, "results/PCA", "component_A")
-save_component_list_as_csv(pca_components_list_B, "results/PCA", "component_B")
-
-# Print a message to indicate completion
-cat("All components have been saved as CSV in the 'results/PCA' directory.\n")
+# The files from pca_components_list_A will have an '_A' suffix
+save_component_list_as_csv(pca_components_list_A, "results/PCA", "_A")
+# The files from pca_components_list_B can have no suffix or a different one (e.g., "_B")
+save_component_list_as_csv(pca_components_list_B, "results/PCA", "_B")
 
 ```
