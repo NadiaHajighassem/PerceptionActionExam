@@ -53,12 +53,12 @@ if (basename(wd) != "PerceptionActionExam") {
 }
 
                               ##NADIA PATH##
- # data_dir <- path_home() %>% 
- #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+  data_dir <- path_home() %>% 
+    path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
 
                               #KATHARINA PATH##
-data_dir <- path_home() %>%
-path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+#data_dir <- path_home() %>%
+#path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 #Aesthetic setup
@@ -934,17 +934,73 @@ rm(df, marker_distances, plot)
 ## Making a for loop that plots x-coordinates for all markers in all groups
 for (df in list_of_dataframes_unfilled) {
  # Create ggplot
-  plot <- ggplot(df, aes(x = x, y = marker, color = global_fill_colour)) +
+  plot <- ggplot(df, aes(x = x, y = marker, color = factor(marker))) +
     geom_point() +
-    ggtitle(paste("Group:", df$group[1], "Condition:", df$condition[1]))+
-    scale_color_manual(values = global_fill_colour)+
+    ggtitle(paste("Plot of x-coordinates for", df$group[1], df$condition[1]))+
+    scale_color_manual(values = aesthetic_palette)+
     theme(legend.position = "none") 
   
   # Print the plot
   print(plot)
 }
+
 rm(df, plot)
 ```
+
+```{r for loop that plots y-coordinates for all markers in all groups}
+## Making a for loop that plots y-coordinates for all markers in all groups
+for (df in list_of_dataframes_unfilled) {
+ # Create ggplot
+  plot <- ggplot(df, aes(x = marker, y = y, color = factor(marker))) +
+    geom_point() +
+    ggtitle(paste("Plot of y-coordinates for", df$group[1], df$condition[1]))+
+    scale_color_manual(values = aesthetic_palette)+
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+  
+  # Print the plot
+  print(plot)
+}
+
+rm(df, plot)
+```
+```{r x-coordinates for all groups in one plot}
+# Combine all data frames into one
+h <- bind_rows(list_of_dataframes_unfilled)
+
+# Create ggplot
+plot <- ggplot(h , aes(x = x, y = marker, color = factor(marker))) +
+  geom_point() +
+  ggtitle("x-coordinates plotted for all groups") +
+  scale_color_manual(values = aesthetic_palette) +
+  theme(legend.position = "none") 
+
+# Print the combined plot
+print(plot)
+
+```
+
+
+```{r y-coordinates for all groups in one plot}
+# Combine all data frames into one
+h <- bind_rows(list_of_dataframes_unfilled)
+
+# Create ggplot
+plot <- ggplot(h , aes(x = marker, y = y, color = factor(marker))) +
+  geom_point() +
+  ggtitle("y-coordinates plotted for all groups") +
+  scale_color_manual(values = aesthetic_palette) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the combined plot
+print(plot)
+
+```
+
+
+
+
 
 It is clear the quality of the dataset differs immensely, and some groups have significantly more NA's than others.
 
