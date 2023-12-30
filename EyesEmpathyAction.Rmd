@@ -109,6 +109,32 @@ personality_questionnaire %>%
        y = "Count")
 ```
 
+For the particpants section in our exam
+
+```{r}
+# Computing amount of participants 
+count_distinct_participants <- personality_questionnaire %>%
+  summarize(count = n_distinct(`Participant ID`))
+
+print(paste( "There are", count_distinct_participants, "particpants"))
+
+# Mean age
+mean_age <- personality_questionnaire %>%
+  summarize(mean_age = mean(Age, na.rm = TRUE))
+
+print(paste("Mean age is", mean_age))
+
+# Sd age
+sd_age <- personality_questionnaire %>%
+  summarise(sd_age = sd(Age, na.rm = TRUE))
+
+print(paste("SD age is", sd_age))
+
+# Computing gender 
+personality_questionnaire %>%
+  count(Gender)
+```
+
 # Empathy scoring
 
 We start out by making a database for each question, its weight and whether it is reversed or not (counts negatively towards the final score.
