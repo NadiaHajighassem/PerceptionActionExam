@@ -254,7 +254,7 @@ pca_components_list_A <- list()
 pca_components_list_B <- list()
 
 # Define the number of principal components to use
-num_pca_components_to_use <- 1  # You can adjust this as needed
+num_pca_components_to_use <- 2  # You can adjust this as needed
 
 for (i in 1:16) {
     if (i <= length(list_of_dataframes_A)) {
@@ -472,5 +472,9 @@ save_component_list_as_csv <- function(component_list, dir_path, suffix = "") {
 save_component_list_as_csv(pca_components_list_A, "results/PCA", "_A")
 # The files from pca_components_list_B can have no suffix or a different one (e.g., "_B")
 save_component_list_as_csv(pca_components_list_B, "results/PCA", "_B")
+
+
+print(pca_components_list_A$group0_jointlead_A)
+
 
 ```

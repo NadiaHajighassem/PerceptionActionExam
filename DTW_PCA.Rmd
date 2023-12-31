@@ -92,7 +92,7 @@ for (csv_file in component_files_B) {
 }
 ```
 
-## Scoring each pair (One component)
+## OLD: Scoring each pair (One component)
 
 Computing DTW for each group with a for loop, results can be found in "dtw_results_df"
 
@@ -135,6 +135,9 @@ summary(dtw_distances)
 print(dtw_results_df)
 ```
 ## NEW: Scoring each pair (Two components)
+
+Results can be found in dtw_results_df_PCA
+
 ```{r}
 # Create empty vectors to store DTW distances, group numbers, and conditions
 dtw_distances <- numeric(length(component_list_A))
@@ -171,7 +174,7 @@ for (i in seq_along(component_list_A)) {
   # Sum the DTW distances for the first and second components
   dtw_together <- dtw_distance1 + dtw_distance2
   
-  # Divide the summed DTW distance by 2 (take the mean)
+  # Divide the summed DTW distance by 2 
   dtw_distance_mean <- dtw_together / 2
   
   # Print the mean DTW distance for both components
@@ -201,8 +204,8 @@ write_csv(dtw_results_df_PCA, "results/dtw_results_df_PCA.csv")
 ## NEW: Calculating it manually to check whether the for loop calculated the DTW correctly (It did wuhuu!)
 ```{r}
 ## extracting the principal components
-A <- component_list_A[["group0_jointlead_A"]]
-B <- component_list_B[["group0_jointlead_B"]]
+A <- component_list_A[["group3_jointlead_A"]]
+B <- component_list_B[["group3_jointlead_B"]]
 
 ## first principal component
 dim1 <- dtw(A$Dim.1, B$Dim.1, keep = TRUE)
@@ -222,150 +225,237 @@ final <- (dim1_distance + dim2_distance )/2
 print(final)
 ```
 
-## Visualising
+### NEW: Visualising all pairs first principal component in twoway, threeway and density plots:
 
-### Testing step patterns
+# All plots for the first and second component can be found in DTW_twowayPlots, DTW_threewayPlots and DTW_densityPlots in the results folder :)
 
-```{r testing_step_patterns}
-i<- 6
-plot(
-    dtw(component_list_A[[i]],component_list_B[[i]],
-        keep=TRUE,
-        step=rabinerJuangStepPattern(6,"c")),
-        col = aesthetic_highlight_difference_palette,
-         lty = c(1, 1),
-         lwd = c(6, 6),
-        type="twoway",offset=-2)
+```{r twoway for first component}
+# Create a folder to save plots
+dir.create("results/DTW_twowayPlots", showWarnings = FALSE)
 
-plot(
-    dtw(component_list_A[[i]],component_list_B[[i]],
-        keep=TRUE,
-        step=symmetricP1),
-        col = aesthetic_highlight_difference_palette,
-         lty = c(1, 1),
-         lwd = c(6, 6),
-        type="twoway",offset=-2)
-plot(
-    dtw(component_list_A[[i]],component_list_B[[i]],
-        keep=TRUE,
-        step=symmetricP2),
-        col = aesthetic_highlight_difference_palette,
-         lty = c(1, 1),
-         lwd = c(6, 6),
-        type="twoway",offset=-2)
-
-plot(
-    dtw(component_list_A[[i]],component_list_B[[i]],
-        keep=TRUE,
-        step=rabinerJuangStepPattern(7,"b")),
-        col = aesthetic_highlight_difference_palette,
-         lty = c(1, 1),
-         lwd = c(6, 6),
-        type="twoway",offset=-2)
-```
-
-### Visualising all pairs: (this is old)
-
-```{r twoway}
 for (i in seq_along(component_list_A)) {
-    # TWO WAY plot
-    plot(dtw(component_list_A[[i]],
-             component_list_B[[i]],
-             keep = TRUE),
-         type = "twoway",
-         lty = c(1, 1),
-         lwd = c(6, 6),
-         offset = -2,
-         col = aesthetic_highlight_difference_palette)
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
 
-    # THREE WAY plot
-    plot(dtw(component_list_A[[i]],
-             component_list_B[[i]],
-             k = TRUE),
-         type = "threeway",
-         off = 1,
-         match.lty = 2,
-         col = aesthetic_highlight_difference_palette)
+    # Construct a meaningful title based on group name
+    plot_title <- paste("First component for group", group_number, condition, "DTW")
 
-    # DENSITY plot
-    plot(dtw(component_list_A[[i]],
-             component_list_B[[i]],
-             k = TRUE),
-         type = "density",
-         off = 1,
-         match.lty = 2)
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_twowayPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.1"],
+            component_list_B[[i]][, "Dim.1"],
+            keep = TRUE),
+        type = "twoway",
+        lty = c(1, 1),
+        lwd = c(6, 6),
+        offset = -2,
+        col = aesthetic_highlight_difference_palette,
+        main = plot_title
+    )
+
+    # Close the PNG device after saving
+    dev.off()
 }
+
+# Reset the default font after the loop
+par(family = "sans")
 
 ```
 
-### NEW: Visualising all pairs first principal component:
+```{r threeway for first component}
+# Create a folder to save plots
+dir.create("results/DTW_threewayPlots", showWarnings = FALSE)
 
-```{r twoway}
 for (i in seq_along(component_list_A)) {
-    # TWO WAY plot
-    plot(dtw(component_list_A[[i]][, "Dim.1"],
-             component_list_B[[i]][, "Dim.1"],
-             keep = TRUE),
-         type = "twoway",
-         lty = c(1, 1),
-         lwd = c(6, 6),
-         offset = -2,
-         col = aesthetic_highlight_difference_palette)
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
 
-    # THREE WAY plot
-    plot(dtw(component_list_A[[i]][, "Dim.1"],
-             component_list_B[[i]][, "Dim.1"],
-             k = TRUE),
-         type = "threeway",
+    # Construct a meaningful title based on group name
+    plot_title <- paste("First component for group", group_number, condition, "threeway")
+
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_threewayPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.1"],
+            component_list_B[[i]][, "Dim.1"],
+            keep = TRUE),
+       type = "threeway",
          off = 1,
          match.lty = 2,
-         col = aesthetic_highlight_difference_palette)
+        col = aesthetic_highlight_difference_palette,
+        main = plot_title
+    )
 
-    # DENSITY plot
-    plot(dtw(component_list_A[[i]][, "Dim.1"],
-             component_list_B[[i]][, "Dim.1"],
-             k = TRUE),
+    # Close the PNG device after saving
+    dev.off()
+}
+
+# Reset the default font after the loop
+par(family = "sans")
+
+```
+
+```{r Density plot for first component}
+# Create a folder to save plots
+dir.create("results/DTW_densityPlots", showWarnings = FALSE)
+
+for (i in seq_along(component_list_A)) {
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
+
+    # Construct a meaningful title based on group name
+    plot_title <- paste("First component for group", group_number, condition, "density")
+
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_densityPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.1"],
+            component_list_B[[i]][, "Dim.1"],
+               k = TRUE),
          type = "density",
          off = 1,
-         match.lty = 2)
+         match.lty = 2,
+        main = plot_title
+    )
+
+    # Close the PNG device after saving
+    dev.off()
 }
+
+# Reset the default font after the loop
+par(family = "sans")
 
 ```
 
 ### NEW: Visualising all pairs second principal component:
 
-```{r twoway}
-for (i in seq_along(component_list_A)) {
-    # TWO WAY plot
-   plot(dtw(component_list_A[[i]][, "Dim.2"],
-             component_list_B[[i]][, "Dim.2"],
-             keep = TRUE),
-         type = "twoway",
-         lty = c(1, 1),
-         lwd = c(6, 6),
-         offset = -2,
-         col = aesthetic_highlight_difference_palette)
+```{r twoway for second component}
+# Create a folder to save plots
+dir.create("results/DTW_twowayPlots", showWarnings = FALSE)
 
-    # THREE WAY plot
- plot(dtw(component_list_A[[i]][, "Dim.2"],
-             component_list_B[[i]][, "Dim.2"],
-             k = TRUE),
-         type = "threeway",
+for (i in seq_along(component_list_A)) {
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
+
+    # Construct a meaningful title based on group name
+    plot_title <- paste("Second component for group", group_number, condition, "DTW")
+
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_twowayPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.2"],
+            component_list_B[[i]][, "Dim.2"],
+            keep = TRUE),
+        type = "twoway",
+        lty = c(1, 1),
+        lwd = c(6, 6),
+        offset = -2,
+        col = aesthetic_highlight_difference_palette,
+        main = plot_title
+    )
+
+    # Close the PNG device after saving
+    dev.off()
+}
+
+# Reset the default font after the loop
+par(family = "sans")
+```
+
+```{r threeway for second component}
+# Create a folder to save plots
+dir.create("results/DTW_threewayPlots", showWarnings = FALSE)
+
+for (i in seq_along(component_list_A)) {
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
+
+    # Construct a meaningful title based on group name
+    plot_title <- paste("Second component for group", group_number, condition, "threeway")
+
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_threewayPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.2"],
+            component_list_B[[i]][, "Dim.2"],
+            keep = TRUE),
+       type = "threeway",
          off = 1,
          match.lty = 2,
-         col = aesthetic_highlight_difference_palette)
+        col = aesthetic_highlight_difference_palette,
+        main = plot_title
+    )
 
-    # DENSITY plot
-     plot(dtw(component_list_A[[i]][, "Dim.2"],
-             component_list_B[[i]][, "Dim.2"],
-             k = TRUE),
-         type = "density",
-         off = 1,
-         match.lty = 2)
+    # Close the PNG device after saving
+    dev.off()
 }
+
+# Reset the default font after the loop
+par(family = "sans")
 
 ```
 
+```{r Density for second component}
+# Create a folder to save plots
+dir.create("results/DTW_densityPlots", showWarnings = FALSE)
+
+for (i in seq_along(component_list_A)) {
+    group_number <- group_numbers[i]
+    condition <- conditions[i]
+
+    # Construct a meaningful title based on group name
+    plot_title <- paste("Second component for group", group_number, condition, "density")
+
+    # Set the default font to Times New Roman
+    par(family = "serif")
+
+    # Open the PNG device
+    png(file = paste0("results/DTW_densityPlots/", gsub(" ", "_", plot_title), ".png"))
+
+    # Plot
+    plot(
+        dtw(component_list_A[[i]][, "Dim.2"],
+            component_list_B[[i]][, "Dim.2"],
+               k = TRUE),
+         type = "density",
+         off = 1,
+         match.lty = 2,
+        main = plot_title
+    )
+
+    # Close the PNG device after saving
+    dev.off()
+}
+
+# Reset the default font after the loop
+par(family = "sans")
+```
 
 
 ## False-pairs
