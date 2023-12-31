@@ -82,7 +82,7 @@ empathy_questionnaire <- empathy_questionnaire %>%
 
 ## Dance experience Survey
 
-In order to account for experience with dance we score each participant according to their answers on the survey. We select all questions from Factor 1 and factor 2, and extract only the numeric values (discard characters such as \"completely agree\" and leave the numeric codes corresponding to such characters).
+In order to account for experience with dance we score each participant according to their answers on the survey. We select all questions from Factor 1 and factor 2, and extract only the numeric values (discard characters such as "completely agree" and leave the numeric codes corresponding to such characters).
 
 ```{r dance_data}
 dance_survey <- read_csv('data/PercAct23_Mocap_personality_questionnaires.csv')%>% 
@@ -555,7 +555,7 @@ We expect the effect of age and gender to vary across the different clusters, an
 | Factor2_SocialDancing_score | (Gender)       |
 | DTW_type                    |                |
 
-However, due to the size (or lack thereof) of the dataset, including both age and gender as random effects would lead to overfitting. Therefore, they won\'t be included in our model, and are only mentioned as in an ideal setting with a large set, they should be included.
+However, due to the size (or lack thereof) of the dataset, including both age and gender as random effects would lead to overfitting. Therefore, they won't be included in our model, and are only mentioned as in an ideal setting with a large set, they should be included.
 
 Due to the extremely small dataset, we wish to keep our model as simple as possible.
 
@@ -605,9 +605,9 @@ The variance appears somewhat random, but with a small gap between clusters. For
 
 Though the assumptions are somewhat shaky, we continue with assessing the model fit.
 
-### **Cook\'s distance**
+### **Cook's distance**
 
-We wish to know if any observations have a particularily high influence on our model. For that we use Cook\'s distance and check if any observations exceed the threshold
+We wish to know if any observations have a particularily high influence on our model. For that we use Cook's distance and check if any observations exceed the threshold
 
 ```{r}
 # Calculate Cook's distance
@@ -635,7 +635,7 @@ influential_obs <- which(cooks_dist > threshold)
 print(influential_obs)
 ```
 
-According to Cook\'s distance, observation 6, 8 and 24 have especially large influence over the model. These observations correspond to the index in complete_df.
+According to Cook's distance, observation 6, 8 and 24 have especially large influence over the model. These observations correspond to the index in complete_df.
 
 ## **Model fit and interpretation**
 
