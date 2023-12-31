@@ -1,11 +1,14 @@
 ---
-title: "Eyes, Empathy and Action"
+title: "Empathy and Action"
 author: "Katharina Hellmund & Nadia Hajighassem"
 date: "2023-12-09"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: journal
 ---
-
-# Setup and Preparation
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
@@ -27,7 +30,10 @@ pacman::p_load(
   "Rcpp",
   "future",
   "ggplot2",
-  "hrbrthemes"
+  "hrbrthemes",
+  "lme4",
+  "Matrix",
+  "lmerTest"
 )
 
 #Aesthetic setup
@@ -76,16 +82,40 @@ empathy_questionnaire <- empathy_questionnaire %>%
 
 ## Dance experience Survey
 
-In order to account for experience with dance we score each participant according to their answers on the survey
+In order to account for experience with dance we score each participant according to their answers on the survey. We select all questions from Factor 1 and factor 2, and extract only the numeric values (discard characters such as \"completely agree\" and leave the numeric codes corresponding to such characters).
 
 ```{r dance_data}
+dance_survey <- read_csv('data/PercAct23_Mocap_personality_questionnaires.csv')%>% 
+  dplyr::filter(`I was a participant in the Mocap workshop`=="Yep") %>%
+  mutate(`Participant ID` = case_when(
+    `Participant ID` == "7A" ~ "A7",
+    `Participant ID` == "b12" ~ "B12",
+    `Participant ID` == "6b" ~ "B6",
+    `Participant ID` == "12 A" ~ "A12",
+    `Participant ID` == "B01" ~ "B1",
+    `Participant ID` == "A" ~ "A6",
+    `Participant ID` == "nnn" ~ "A1",
+    `Participant ID` == "H7" ~ "A13",
+    TRUE ~ `Participant ID`  # If no match, keep the original value
+  )) 
 
+dance_survey <- dance_survey %>% 
+  select(
+    `Participant ID`,
+    Gender,
+    Age,
+    starts_with("Factor")
+  )
+
+dance_survey <- dance_survey %>%
+  mutate(across(starts_with("Factor"), ~as.numeric(str_replace_all(., "[^0-9]", ""))))
 ```
 
 ## Motion Capture
 
 ```{r motion_data}
-synchrony_scores <- read_csv("data/dtw_results.csv")
+synchrony_scores_PCA <- read_csv("results/dtw_results_df_PCA.csv")
+synchrony_scores_ICA <- read_csv("results/dtw_results_PCA.csv") #PLACEHOLDER!!!!!
 ```
 
 # Exploratory data-analysis
@@ -109,7 +139,7 @@ personality_questionnaire %>%
        y = "Count")
 ```
 
-For the particpants section in our exam
+For the participants section in our exam
 
 ```{r}
 # Computing amount of participants 
@@ -137,7 +167,7 @@ personality_questionnaire %>%
 
 # Empathy scoring
 
-We start out by making a database for each question, its weight and whether it is reversed or not (counts negatively towards the final score.
+We start out by making a database for each question and whether it is reversed or not (counts negatively towards the final score. The EQ-22 short does not provide weights for each question, therefore we assume each question to be weighted the same.
 
 ```{r}
 empathy_question_weights <- data.frame(
@@ -189,28 +219,6 @@ thinking.",
                "I can tell if someone is masking their true emotion.",
                "I am good at predicting what someone will do.",
                "I tend to get emotionally involved with a friend's problems."),
-  weight = c("",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             "",
-             ""),
   reverse = c("no", 
               "no",
               "yes",
@@ -282,58 +290,217 @@ empathy_questionnaire %>%
 
 ```
 
-# Empathy and Synchrony
+# **Dance Sophistication Scoring**
 
-Before plotting we must unify the two dataframes into something usable. There is only one synchrony score per pair, so the A and B pair will have the same score. However, they will each have two scores stemming from the two conditions: Joint Lead and lead follower.
+We give each participant a score for body awareness and a score for social dancing according to the GOLD-dsi (The Goldsmiths Dance Sophistication Index) P1 and P2. In similar fashion to EQ-22, some questions count reversed, so we begin by defining those in accordance to the appendix in [GOLD-dsi](https://research.gold.ac.uk/id/eprint/29282/16/2020-80492-001.pdf)
+
+```{r}
+dance_sophistication_weights <- data.frame(
+  original_index = c(
+    "P1.1",
+    "P1.2",
+    "P1.3",
+    "P1.4",
+    "P1.5",
+    "P1.6",
+    "P2.1",
+    "P2.2",
+    "P2.3",
+    "P2.4",
+    "P2.5",
+    "P2.6"),
+  question = c(
+    "I find it easy to learn new movements.",
+    "I feel like I have two left feet.",
+    "I find it easy to control my movements.",
+    "I am not very coordinated.",
+    "I am aware of my body and how I hold myself.",
+    "I find it easy to learn or imitate other people’s move-
+ments.",
+    "If someone asks me to dance, I usually say yes.",
+    "I would rather go to a pub than a club so that I do not have
+to dance.",
+    "I like dancing in front of people.",
+    "I find dancing really embarrassing.",
+    "Dancing with other people is a great night out as far as
+I’m concerned.",
+    "You normally have to drag me onto the dance floor
+because I’m not really sure what to do. "
+  ),
+  reverse = c(
+    "no",
+    "yes",
+    "no",
+    "yes",
+    "no",
+    "no",
+    "no",
+    "yes",
+    "no",
+    "yes",
+    "no",
+    "yes"
+  )
+)
+```
+
+Now we reverse the values for the relevant columns.
+
+```{r}
+# Select columns that start with "question:"
+question_cols <- dance_survey %>%
+                 select(starts_with("Factor"))
+
+# Assuming empathy_question_weights has the same column names as question_cols and a 'reverse' column
+columns_to_reverse <- dance_sophistication_weights$reverse == "yes"
+columns_to_reverse <- names(question_cols)[columns_to_reverse]
+
+# Copy the original dataframe
+dance_survey_reversed <- dance_survey
+
+# Apply the reversal only to the specified columns
+dance_survey_reversed[columns_to_reverse] <- 11 - dance_survey_reversed[columns_to_reverse]
+
+# Calculate the sum of the "Factor 1" columns per row and add it as a new column
+dance_survey_reversed <- dance_survey_reversed %>%
+                                  rowwise() %>%
+                                  mutate(Factor1_BodyAwareness_score = sum(c_across(starts_with("Factor 1")), na.rm = TRUE)) %>%
+                                  ungroup()
+
+dance_survey$Factor1_BodyAwareness_score <- dance_survey_reversed$Factor1_BodyAwareness_score
+
+# Calculate the sum of the "Factor 2" columns per row and add it as a new column
+dance_survey_reversed <- dance_survey_reversed %>%
+                                  rowwise() %>%
+                                  mutate(Factor2_SocialDancing_score = sum(c_across(starts_with("Factor 2")), na.rm = TRUE)) %>%
+                                  ungroup()
+
+dance_survey$Factor2_SocialDancing_score <- dance_survey_reversed$Factor2_SocialDancing_score
+
+write_csv(dance_survey, "data/dance_survey_scored.csv")
+
+#Removing things from environment to decrease clutter :)
+rm(dance_survey_reversed, dance_sophistication_weights, question_cols, columns_to_reverse)
+```
+
+Plotting the scores:
+
+```{r}
+dance_survey %>%
+  ggplot() +
+  geom_density(aes(x = Factor1_BodyAwareness_score, fill = "Body Awareness"), alpha = 0.7) +
+  geom_density(aes(x = Factor2_SocialDancing_score, fill = "Social Dancing"), alpha = 0.7) +
+  xlim(5, 60) +
+  labs(title = "Dance Sophistication Distribution",
+       subtitle = "Density Plot of Body Awareness and Social Dancing Scores",
+       x = "Score",
+       y = "Density",
+       fill = "Factor") +
+  scale_fill_manual(values = aesthetic_highlight_difference_palette)
+
+```
+
+# **Synchrony**
+
+Lets model both synchrony scores for ICA and PCA
+
+```{r}
+synchrony_scores_ICA %>%
+  ggplot(aes(x=DTW_Distance)) +
+  geom_density(fill = global_fill_colour, alpha=0.7) +
+    xlim(0, 6000) +
+  labs(title="Density Plot of ICA synchrony scores", 
+       x="DTW synchrony Score", 
+       y="Density") 
+
+synchrony_scores_PCA %>%
+  ggplot(aes(x=Mean_DTW_Distance)) +
+  geom_density(fill = global_fill_colour, alpha=0.7) +
+    xlim(0, 300) +
+  labs(title="Density Plot of PCA synchrony scores", 
+       x="DTW synchrony Score", 
+       y="Density")
+```
+
+Going forward, we choose to work with PCA synchrony scores
+
+```{r}
+synchrony_scores <- synchrony_scores_PCA
+```
+
+# **Empathy, Dance sophistication, and Synchrony**
+
+Before plotting we must unify the dataframes into something usable. There is only one synchrony score per pair, so the A and B pair will have the same score. However, they will each have two scores stemming from the two conditions: Joint Lead and lead follower.
 
 We start by reshaping into a wide format.
 
 ```{r}
-library(tidyr)
-
 # Reshaping the dataframe
 synchrony_scores <- synchrony_scores %>%
   pivot_wider(
     names_from = Condition, 
-    values_from = DTW_Distance,
+    values_from = Mean_DTW_Distance,
     names_prefix = "DTW_"
   )
 ```
 
-Then we select the columns from the empathy dataframe that we are interested in and add the synchrony scores.
+We now combine the synchrony, empathy and dance sophistication scores into one dataframe to be used for analysis.
 
 ```{r}
-# Selecting relevant columns from empathy_questionnaire
-empathy_dtw_df <- empathy_questionnaire %>%
+# Selecting and mutating from empathy_questionnaire
+eq_df <- empathy_questionnaire %>%
   select(`Participant ID`, Gender, Age, EQ_score) %>%
-  # Extract the numeric part of the Participant ID
   mutate(Group = as.numeric(str_extract(`Participant ID`, "\\d+")))
 
+# Selecting and mutating from dance_survey
+ds_df <- dance_survey %>%
+  select(`Participant ID`, Gender, Age, Factor1_BodyAwareness_score, Factor2_SocialDancing_score) %>%
+  mutate(Group = as.numeric(str_extract(`Participant ID`, "\\d+")))
+
+# Merging both data frames
+complete_df <- full_join(eq_df, ds_df, by = c("Participant ID", "Gender", "Age", "Group"))
+
 # Merge with synchrony_scores
-empathy_dtw_df <- empathy_dtw_df %>%
+complete_df <- complete_df %>%
   left_join(synchrony_scores, by = "Group")
 
-#Reshape back into long-format
-
-empathy_dtw_df <- empathy_dtw_df %>%
+# Reshape into long-format
+complete_df <- complete_df %>%
   pivot_longer(
     cols = starts_with("DTW_"),
     names_to = "DTW_Type",
     values_to = "DTW_Value"
   )
 
-
 # View the combined dataframe
-print(empathy_dtw_df)
+print(complete_df)
 
+rm(ds_df, eq_df, dance_survey, empathy_questionnaire, personality_questionnaire, synchrony_scores, synchrony_scores_ICA, synchrony_scores_PCA)
+```
+
+We save our complete dataframe for backup
+
+```{r}
+complete_df <- complete_df %>% 
+  select(-Group)
+# Check if the 'results' directory exists, create it if it doesn't
+if (!dir.exists("results")) {
+  dir.create("results")
+}
+
+# Write the dataframe to a CSV file
+write.csv(complete_df, "results/actionandempathy_dataset.csv", row.names = FALSE)
 ```
 
 Now we can plot them to see if there is any relationship:
 
 ```{r}
-# Create the plot
-ggplot(long_format_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
+complete_df <- na.omit(complete_df) #OMITTING ALL NAS!!!! SOME DONT HAVE A DTW SCORE
+#EQ DTW
+ggplot(complete_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
   geom_point() +
+  geom_smooth(se=FALSE)+
+  ylim(0, 6000)+
   labs(
     title = "DTW Values vs EQ Score",
     x = "EQ Score",
@@ -342,14 +509,217 @@ ggplot(long_format_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
   )+
   scale_color_manual(values = aesthetic_highlight_difference_palette)
 
+#F1 DTW
+ggplot(complete_df, aes(x = Factor1_BodyAwareness_score, y = DTW_Value, color = DTW_Type)) +
+  geom_point() +
+  geom_smooth(se=FALSE)+
+  ylim(0, 6000)+
+  labs(
+    title = "DTW Values vs Body Awareness",
+    x = "EQ Score",
+    y = "DTW Value",
+    color = "Condition"
+  )+
+  scale_color_manual(values = aesthetic_highlight_difference_palette)
+
+#F2 DTW
+ggplot(complete_df, aes(x = Factor2_SocialDancing_score, y = DTW_Value, color = DTW_Type)) +
+  geom_point() +
+  geom_smooth(se=FALSE)+
+  ylim(0, 6000)+
+  labs(
+    title = "DTW Values vs Social Dancing",
+    x = "EQ Score",
+    y = "DTW Value",
+    color = "Condition"
+  )+
+  scale_color_manual(values = aesthetic_highlight_difference_palette)
+
 ```
 
-## Adding dance experience scores
+We wish to model to account for each participants degree of dance-expertise. We create a linear mixed effects model with following variables:
+
+| Dependent variable |
+|:------------------:|
+|     DTW_Value      |
+
+We expect the effect of age and gender to vary across the different clusters, and are not of interest on their own to our model, therefore they are included as random effects.
+
+| Independent variables: |
+|:----------------------:|
+
+| Fixed effects               | Random Effects |
+|-----------------------------|----------------|
+| EQ_score                    | Participant ID |
+| Factor1_BodyAwareness_score | (Age)          |
+| Factor2_SocialDancing_score | (Gender)       |
+| DTW_type                    |                |
+
+However, due to the size (or lack thereof) of the dataset, including both age and gender as random effects would lead to overfitting. Therefore, they won\'t be included in our model, and are only mentioned as in an ideal setting with a large set, they should be included.
+
+Due to the extremely small dataset, we wish to keep our model as simple as possible.
 
 ```{r}
+library(Matrix)
+library(lme4)
 
+model <- lme4::lmer(DTW_Value ~ EQ_score + DTW_Type + Factor1_BodyAwareness_score + Factor2_SocialDancing_score + (1 | `Participant ID`), data = complete_df)
 ```
 
-# Modelling
+## **Checking assumptions**
 
-We wish to model to account for each participants degree of dance-expertise.
+In order to verify the validity of our models results, we must check if it upholds the assumptions that mixed effects models are based on.
+
+### **Normality of residuals:**
+
+To check for normality of residuals, we make a Q-Q plot to compare the quantiles of the residuals to the quantiles of a normal distribution.
+
+```{r}
+residuals_df <- data.frame(Residuals = resid(model))
+ggplot(residuals_df, aes(sample = Residuals)) +
+    geom_qq() +
+    geom_qq_line(colour = global_fill_colour) +
+    labs(title = "Q-Q Plot of Model Residuals",
+         x = "Theoretical Quantiles",
+         y = "Sample Quantiles")
+```
+
+There is a slight departure from the line towards the tail which indicates a departure from normality.
+
+### **Homoscedasticity (Homogeneity of variance):**
+
+We plot the residuals against fitted values, to see if the variance is constant throughout all levels of the independent variables
+
+```{r}
+model_data <- data.frame(Fitted = fitted(model), Residuals = resid(model))
+ggplot(model_data, aes(x = Fitted, y = Residuals)) +
+    geom_point() +
+    geom_hline(yintercept = 0, color = global_fill_colour) + 
+    labs(title="Homoscedasticity check",
+         subtitle = "Fitted Values vs. Residuals",
+         x = "Fitted Values",
+         y = "Residuals")
+```
+
+The variance appears somewhat random, but with a small gap between clusters. For larger datasets this could be caused by an underlying bimodal distribution or that we are missing an important predictor, but since our dataset is so small, it is difficult to draw a conclusion.
+
+Though the assumptions are somewhat shaky, we continue with assessing the model fit.
+
+### **Cook\'s distance**
+
+We wish to know if any observations have a particularily high influence on our model. For that we use Cook\'s distance and check if any observations exceed the threshold
+
+```{r}
+# Calculate Cook's distance
+cooks_dist <- cooks.distance(model)
+
+# Calculate the threshold
+threshold <- 4 / length(cooks_dist)
+
+# Create a data frame for plotting
+cooks_df <- data.frame(Index = 1:length(cooks_dist), CooksDistance = cooks_dist)
+
+# Plot Cook's distance using ggplot2
+ggplot(cooks_df, aes(x = Index, y = CooksDistance)) +
+    geom_hline(yintercept = threshold, linetype = "dashed", color = global_fill_colour) +
+    geom_segment(aes(x = Index, xend = Index, y = 0, yend = CooksDistance)) +
+    labs(title = "Cook's Distance: ",
+         subtitle = "Visualising Especially Important Observations",
+         y = "Cook's Distance",
+         x = "Observation Index")
+
+# Find observations where Cook's distance exceeds the threshold
+influential_obs <- which(cooks_dist > threshold)
+
+# Print the indices of these observations
+print(influential_obs)
+```
+
+According to Cook\'s distance, observation 6, 8 and 24 have especially large influence over the model. These observations correspond to the index in complete_df.
+
+## **Model fit and interpretation**
+
+```{r}
+print("SUMMARY RESULTS")
+summary(model) #GIVE ME P-VALUES!!!! WHY WONT U! NOW I HAVE TO RUN ANOVA!
+print("ANOVA RESULTS")
+anova(model)
+```
+
++-------------------------------------------------------------------+
+| Formula                                                           |
++:=================================================================:+
+| DTW_Value \~ EQ_score + DTW_Type + Factor1_BodyAwareness_score +\ |
+| Factor2_SocialDancing_score + (1 \| `Participant ID`)             |
++-------------------------------------------------------------------+
+
+*ADD INTERPRETATION AFTER PCA*
+
+# **Visualising**
+
+Is the model decent?
+
+```{r}
+predicted_values <- predict(model)
+ggplot(complete_df, aes(x = predicted_values, y = DTW_Value)) +
+    geom_point() +
+    geom_abline(color = global_fill_colour) +
+    labs(title = "Predicted vs. Observed DTW_Value",
+         x = "Predicted DTW_Value",
+         y = "Observed DTW_Value")
+```
+
+## **Fixed effects:**
+
+We plot how each fixed effect affects DTW according to our model. However it is important to not that these plots do not show the significance of this prediction!!!
+
+```{r}
+complete_df$predicted_DTW_Value <- predict(model, re.form = NA)  # re.form = NA to exclude random effects
+```
+
+```{r}
+ggplot(complete_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, aes(color = DTW_Type)) +
+    labs(title = "Effect of EQ Score on DTW Value",
+         x = "EQ Score",
+         y = "DTW Value")+
+  scale_color_manual(values= aesthetic_highlight_difference_palette)
+```
+
+```{r}
+ggplot(complete_df, aes(x = Factor1_BodyAwareness_score, y = DTW_Value, color = DTW_Type)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, aes(color = DTW_Type)) +
+    labs(title = "Effect of Body Awareness Score on DTW Value",
+         x = "Factor1 Body Awareness Score",
+         y = "DTW Value")+
+  scale_color_manual(values= aesthetic_highlight_difference_palette)
+```
+
+```{r}
+ggplot(complete_df, aes(x = Factor2_SocialDancing_score, y = DTW_Value, color = DTW_Type)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, aes(color = DTW_Type)) +
+    labs(title = "Effect of Social Dancing Score on DTW Value",
+         x = "Factor2 Social Dancing Score",
+         y = "DTW Value")+
+  scale_color_manual(values= aesthetic_highlight_difference_palette)
+```
+
+## **Random effects:**
+
+```{r}
+# Extracting random effects
+ran_ef <- ranef(model)$`Participant ID`
+ran_ef <- as.data.frame(ran_ef)
+
+# Plotting random intercepts
+ggplot(ran_ef, aes(x = rownames(ran_ef), y = `(Intercept)`)) +
+    geom_point() +
+    labs(title = "Random Intercepts for Each Participant",
+         x = "Participant ID",
+         y = "Intercept Value")
+```
+
+# **Final interpretation**
