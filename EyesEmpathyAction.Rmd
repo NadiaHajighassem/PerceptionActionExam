@@ -16,7 +16,7 @@ knit: (function(inputFile, encoding) {
       inputFile,
       encoding = encoding,
       output_dir = "html.file",
-      output_file = "DTW_PCA.html"))})
+      output_file = "Empathy_and_action.html"))})
 ---
 
 ```{r setup, include=FALSE}
@@ -686,17 +686,17 @@ Our model has each participant ID as a random effect. The variance is 985775 wit
 
 Holding all other predictors constant, the model predicts the following increase in DTW per 1 increase in fixed effect:
 
-+-----------------------------+-----------------------------+--------------+
-| Predictor                   | Effect on DTW per 1 step    | T-value      |
-+=============================+=============================+==============+
-| EQ-score                    | 48.82                       | 1.218 (NO)   |
-+-----------------------------+-----------------------------+--------------+
-| DTW_Type\$DTW_leadfollow    | -2218.35                    | -3.553 (YES) |
-+-----------------------------+-----------------------------+--------------+
-| Factor1_BodyAwareness_score | -113.68                     | -1.384 (NO)  |
-+-----------------------------+-----------------------------+--------------+
-| Factor2_SocialDancing_score | 35.41                       | 0.525 (NO)   |
-+-----------------------------+-----------------------------+--------------+
++-----------------------------+--------------------------+---------------+
+| Predictor                   | Effect on DTW per 1 step | T-value       |
++=============================+==========================+===============+
+| EQ-score                    | 48.82                    | 1.218 (NO)    |
++-----------------------------+--------------------------+---------------+
+| DTW_Type\$DTW_leadfollow    | -2218.35                 | -3.553 (YES)  |
++-----------------------------+--------------------------+---------------+
+| Factor1_BodyAwareness_score | -113.68                  | -1.384 (NO)   |
++-----------------------------+--------------------------+---------------+
+| Factor2_SocialDancing_score | 35.41                    | 0.525 (NO)    |
++-----------------------------+--------------------------+---------------+
 
 **ANOVA:**
 

@@ -459,103 +459,150 @@ Having given each pair a score for their synchrony, we must now explore if this 
 We first look at the jointlead condition
 
 ```{r}
-batch_size <- 5  # Set a reasonable batch size based on your memory
-total_a <- sum(grepl("_jointlead_A$", names(component_list_A)))
-total_b <- sum(grepl("_jointlead_B$", names(component_list_B)))
-total_comparisons <- total_a * total_b
+# Load the dtw library
+library(dtw)
 
-# Create a function to process a batch
-process_batch <- function(start_idx, end_idx, component_list_A, component_list_B) {
-    dtw_distances <- numeric(0)
-    component_a_names <- character(0)
-    component_b_names <- character(0)
+# Initialize vectors to store results
+dtw_results_df_jointlead <- data.frame(Component_A = character(0), 
+                                       Component_B = character(0), 
+                                       PCA_Component = integer(0),
+                                       DTW_Distance = numeric(0))
+
+# Function to process a batch of comparisons
+process_batch <- function(start_idx, end_idx, component_list_A, component_list_B, PCA_component_weights) {
+    results <- data.frame(Component_A = character(0), 
+                          Component_B = character(0), 
+                          PCA_Component = integer(0),
+                          DTW_Distance = numeric(0))
 
     idx <- 1
     for (a_name in names(component_list_A)) {
         if (grepl("_jointlead_A$", a_name)) {
             component_a <- component_list_A[[a_name]]
+            groupid_a <- sub("_A$", "", a_name)
+            weight_a <- PCA_component_weights[PCA_component_weights$groupid == groupid_a, ]
 
-            for (b_name in names(component_list_B)) {
-                if (grepl("_jointlead_B$", b_name)) {
-                    if (idx >= start_idx && idx <= end_idx) {
-                        dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
-                        dtw_distances <- c(dtw_distances, dtw_result$distance)
-                        component_a_names <- c(component_a_names, a_name)
-                        component_b_names <- c(component_b_names, b_name)
+            for (i in 1:ncol(component_a)) {
+                for (b_name in names(component_list_B)) {
+                    if (grepl("_jointlead_B$", b_name)) {
+                        for (j in 1:ncol(component_list_B[[b_name]])) {
+                            if (idx >= start_idx && idx <= end_idx) {
+                                component_b <- component_list_B[[b_name]]
+                                dtw_result <- dtw(component_a[, i], component_b[, j], keep = TRUE)$distance
+                                weight <- ifelse(i == 1, weight_a$dimension_1_weight, 1 - weight_a$dimension_1_weight)
+                                weighted_dtw <- dtw_result * weight
+
+                                # Add the results to the dataframe
+                                results <- rbind(results, 
+                                                 data.frame(Component_A = a_name, 
+                                                            Component_B = b_name, 
+                                                            PCA_Component = i,
+                                                            DTW_Distance = weighted_dtw))
+                            }
+                            idx <- idx + 1
+                        }
                     }
-                    idx <- idx + 1
                 }
             }
         }
     }
-
-    return(data.frame(
-        Component_A = component_a_names, 
-        Component_B = component_b_names, 
-        DTW_Distance = dtw_distances
-    ))
+    return(results)
 }
+
+# Determine the total number of comparisons
+total_comparisons <- sum(sapply(component_list_A, ncol)) * sum(sapply(component_list_B, ncol))
 
 # Process in batches and combine results
-results <- do.call(rbind, lapply(seq(1, total_comparisons, by = batch_size), function(x) {
+batch_size <- 5  # Adjust the batch size based on your data size and memory
+results_df_list <- lapply(seq(1, total_comparisons, by = batch_size), function(x) {
     end_idx <- min(x + batch_size - 1, total_comparisons)
-    process_batch(x, end_idx, component_list_A, component_list_B)
-}))
+    process_batch(x, end_idx, component_list_A, component_list_B, PCA_component_weights)
+})
 
-# Create a data frame with results if any comparisons were made
-if (length(dtw_distances) > 0) {
-    dtw_results_df_jointlead <- data.frame(
-        Component_A = component_a_names, 
-        Component_B = component_b_names, 
-        DTW_Distance = dtw_distances
-    )
+if (length(results_df_list) > 0) {
+    dtw_results_df_jointlead <- do.call(rbind, results_df_list)
     print(dtw_results_df_jointlead)
 } else {
-    cat("No matching pairs found for '_leadfollow_A' and '_leadfollow_B'")
+    cat("No matching pairs found for '_jointlead_A' and '_jointlead_B'")
 }
 
+# Saving the results
+write.csv(dtw_results_df_jointlead, "results/dtw_results_df_jointlead.csv", row.names = FALSE)
 
 ```
 
 Then we look at the leadfollow condition:
 
 ```{r}
+# Load the dtw library
+library(dtw)
+
 # Initialize vectors to store results
-dtw_distances <- numeric(0)
-component_a_names <- character(0)
-component_b_names <- character(0)
+dtw_results_df_leadfollow <- data.frame(Component_A = character(0), 
+                                        Component_B = character(0), 
+                                        PCA_Component = integer(0),
+                                        DTW_Distance = numeric(0))
 
-# Loop through each element of component_list_A
-for (a_name in names(component_list_A)) {
-    if (grepl("_leadfollow_A$", a_name)) {
-        component_a <- component_list_A[[a_name]]
+# Function to process a batch of comparisons
+process_batch_leadfollow <- function(start_idx, end_idx, component_list_A, component_list_B, PCA_component_weights) {
+    results <- data.frame(Component_A = character(0), 
+                          Component_B = character(0), 
+                          PCA_Component = integer(0),
+                          DTW_Distance = numeric(0))
 
-        # Loop through each element of component_list_B for every qualifying component in component_list_A
-        for (b_name in names(component_list_B)) {
-            if (grepl("_leadfollow_B$", b_name)) {
-                # Perform DTW comparison
-                dtw_result <- dtw::dtw(component_a, component_list_B[[b_name]], keep = TRUE)
-                
-                # Store DTW distance and corresponding A and B component names
-                dtw_distances <- c(dtw_distances, dtw_result$distance)
-                component_a_names <- c(component_a_names, a_name)
-                component_b_names <- c(component_b_names, b_name)
+    idx <- 1
+    for (a_name in names(component_list_A)) {
+        if (grepl("_leadfollow_A$", a_name)) {
+            component_a <- component_list_A[[a_name]]
+            groupid_a <- sub("_A$", "", a_name)
+            weight_a <- PCA_component_weights[PCA_component_weights$groupid == groupid_a, ]
+
+            for (i in 1:ncol(component_a)) {
+                for (b_name in names(component_list_B)) {
+                    if (grepl("_leadfollow_B$", b_name)) {
+                        for (j in 1:ncol(component_list_B[[b_name]])) {
+                            if (idx >= start_idx && idx <= end_idx) {
+                                component_b <- component_list_B[[b_name]]
+                                dtw_result <- dtw(component_a[, i], component_b[, j], keep = TRUE)$distance
+                                weight <- ifelse(i == 1, weight_a$dimension_1_weight, 1 - weight_a$dimension_1_weight)
+                                weighted_dtw <- dtw_result * weight
+
+                                # Add the results to the dataframe
+                                results <- rbind(results, 
+                                                 data.frame(Component_A = a_name, 
+                                                            Component_B = b_name, 
+                                                            PCA_Component = i,
+                                                            DTW_Distance = weighted_dtw))
+                            }
+                            idx <- idx + 1
+                        }
+                    }
+                }
             }
         }
     }
+    return(results)
 }
 
-# Create a data frame with results if any comparisons were made
-if (length(dtw_distances) > 0) {
-    dtw_results_df_leadfollow <- data.frame(
-        Component_A = component_a_names, 
-        Component_B = component_b_names, 
-        DTW_Distance = dtw_distances
-    )
+# Determine the total number of comparisons
+total_comparisons_leadfollow <- sum(sapply(component_list_A, ncol)) * sum(sapply(component_list_B, ncol))
+
+# Process in batches and combine results
+batch_size <- 5  # Adjust the batch size based on your data size and memory
+results_df_list_leadfollow <- lapply(seq(1, total_comparisons_leadfollow, by = batch_size), function(x) {
+    end_idx <- min(x + batch_size - 1, total_comparisons_leadfollow)
+    process_batch_leadfollow(x, end_idx, component_list_A, component_list_B, PCA_component_weights)
+})
+
+if (length(results_df_list_leadfollow) > 0) {
+    dtw_results_df_leadfollow <- do.call(rbind, results_df_list_leadfollow)
     print(dtw_results_df_leadfollow)
 } else {
     cat("No matching pairs found for '_leadfollow_A' and '_leadfollow_B'")
 }
+
+# Saving the results
+write.csv(dtw_results_df_leadfollow, "results/dtw_results_df_leadfollow.csv", row.names = FALSE)
 
 ```
 
