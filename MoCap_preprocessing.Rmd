@@ -1,14 +1,13 @@
 ---
-title: "Data analysis"
+title: "Mocap Preprocessing"
 author: "Nadia and Katharina"
 output:
   html_document:
-      toc: yes
-      number_sections: no
-      toc_float: yes
-      theme: united
-      highlight: espresso
-      css: '../../varia/standard.css'
+     toc: true
+     toc_float: true
+     number_sections: true
+     theme: journal
+mainfont: Times New Roman
 geometry: margin=1in
 knit: (function(inputFile, encoding) {
   browseURL(
@@ -16,12 +15,12 @@ knit: (function(inputFile, encoding) {
       inputFile,
       encoding = encoding,
       output_dir = "html.file",
-      output_file = "DataAnalysis.html"))})
+      output_file = "MoCap_preprocessing.html"))})
 ---
 
-```{r setup}
+```{r setup, message = FALSE, warning = FALSE, include = FALSE}
 ## Setup chunk
-knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 
 pacman::p_load(
@@ -52,13 +51,13 @@ if (basename(wd) != "PerceptionActionExam") {
   setwd("./PerceptionActionExam")
 }
 
-                              ##NADIA PATH##
-  data_dir <- path_home() %>% 
-    path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+  #                             ##NADIA PATH##
+  # data_dir <- path_home() %>% 
+  #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
 
                               #KATHARINA PATH##
-#data_dir <- path_home() %>%
-#path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+data_dir <- path_home() %>%
+path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 #Aesthetic setup
@@ -73,7 +72,7 @@ aesthetic_highlight_difference_palette <- c("#d8aeb5","#2f1a1b")
 
 Loading functions made by Luke for later processing + making sure we are getting the conditions we want.
 
-```{r loading packages}
+```{r loading_packages, echo=TRUE, results='hide'}
 # The available conditions and their start and end frame indices
 # to use the whole file, just set the value for the condition to c(NA, NA)
 conditions <- list(
@@ -87,7 +86,7 @@ source("Functions.R")
 
 And so, some more boring stuff...This is just getting the labels so we can make sure that the tracked markers match up with what we expected, really, this shouldn't go wrong, but if you don't check this kind of thing you'll end up scratching your head later wondering why everything broke.
 
-```{r}
+```{r xml_label_and_name_loading}
 # load the labels from the XML file
 
 # load the XML file
@@ -133,7 +132,7 @@ Finally loading in data hehehe (insert elmo meme with fire in the background)
 
 Aditionally, this code is transforming data from a wide format, where each marker's x, y, and z coordinates are in separate columns, to a long format where all the coordinates are in a single column. It then adds more information about each observation (subject, axis, and marker) before pivoting it back to a wide format.
 
-```{r }
+```{r get_tsv_files, echo=TRUE, results='hide'}
 ## the code lists files in the specified directory that have names ending with ".tsv" and stores the list of file paths in the variable traj_files.
 traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
 ```
@@ -142,7 +141,7 @@ traj_files <- fs::dir_ls(data_dir, regexp = "\\.tsv$")
 
 We make a list that contains all the individual dataframes. This list will be called on and iterated through throughout the next steps. (was called traj_data_list in lukes script. Here it is list_of_dataframes)
 
-```{r}
+```{r loading_data, echo=TRUE, results='hide'}
 # Now we can actually load in the data. When we are loading in the data, we are also renaming our list to be the name of the individual groups and conditions 
 list_of_dataframes <- list()
 
@@ -176,7 +175,7 @@ rm(group_condition_identifier,group_number)
 
 This is so we can have nice individual dataframes later on for each group and condition
 
-```{r}
+```{r condition_and_group_names, echo=TRUE, results='hide'}
 list_of_dataframes <- lapply(list_of_dataframes, function(x) {
   # Add condition and group information to the data frame
   x$data$condition <- x$metadata$condition
@@ -192,7 +191,7 @@ list_of_dataframes <- lapply(list_of_dataframes, function(x) {
 
 Making sure the list only contains the data from each group, and not the metadata.
 
-```{r}
+```{r cleaning_list, echo=TRUE, results='hide'}
 # Assuming list_of_dataframes is a list of data frames with both 'data' and 'metadata'
 for (i in seq_along(list_of_dataframes)) {
   x <- list_of_dataframes[[i]]
@@ -226,7 +225,7 @@ rm(x, condition, group_number, i) #Cleaning up
 
 The columns "group" and "condition" shall be looked at as factors, and we are also performing quality control to make sure no markers have weird unique names.
 
-```{r}
+```{r factorising_condition_and_group, echo=TRUE, results='hide'}
 library(dplyr)
 library(stringi)  # For stri_replace_last_regex
 library(assertthat)  # For assert_that
@@ -272,7 +271,7 @@ rm(df)
 
 Final step before we can work on the dataframes. Currently, the
 
-```{r}
+```{r wide_to_long, echo=TRUE, results='hide'}
 library(dplyr)
 library(tidyr)
 library(stringi)  # For string manipulation
@@ -323,7 +322,7 @@ rm(df, i, marker_names)
 
 ## Sorting by time
 
-```{r}
+```{r sort_by_time}
 # Loop through each dataframe in the list and arrange by 'elapsed_time'
 list_of_dataframes <- lapply(list_of_dataframes, function(df) {
   df %>% arrange(elapsed_time)
@@ -334,7 +333,7 @@ list_of_dataframes <- lapply(list_of_dataframes, function(df) {
 
 Now we have succesfully converted the files from Qualysis into dataframes that we can work on throughout the project, we will save each dataframe to a seperate folder. We also clean the environment of any values and dataframes that will not be useful going forward.
 
-```{r}
+```{r save_csvs}
 # Load necessary library
 library(tidyverse)
 
@@ -364,12 +363,12 @@ cat("All data frames have been saved in the 'data/csv_files' directory with thei
 
 A final clean before we work with our CSV files
 
-```{r}
+```{r final_clean}
 #CLEANING YAY
 rm(conditions, traj_data,traj_labels, i, marker_names, traj_files, data_dir, df_name, file_path, traj_files)
 ```
 
-# Pre-processing: Trimming to 30 seconds, NA's, choosing markers.
+# Pre-processing: Gap-filling and Trimming
 
 We are only interested in a short frame of time within all the recorded data. However, since we will run into issues if we trim before gapfilling, we will save into two seperate dataframes: one that is trimmed into 30 seconds but not gapfilled, and one that is gapfilled before trimming to 30 seconds. We can then use the non-gapfilled version to check for NAs, only within the timeframe we are actually interested in.
 
@@ -487,7 +486,7 @@ every_half_second_df_list <- lapply(list_of_dataframes, function(df) {
 
 Now, every_half_second_df_list contains the simplified versions of the dataframes: the version with data every half second. Using this list, we can now make 3d plots with an included timeframe and identify the t-poses and effectively our 30 second window.
 
-```{r}
+```{r making_3d_plots}
 # Create an empty list to store the plots
 plot_list <- list()
 
@@ -550,14 +549,14 @@ for (i in seq_along(plot_list)) {
 
 ```
 
-```{r}
+```{r showing_3d_plots}
 plot_list
 rm(df, fig, plot, i, df_name, filename, current_df)
 ```
 
 Having manually identified the relevant time-frames, we create a new dataframe and input the relevant values of elapsed time.
 
-```{r}
+```{r assigning_relevant_timeframes}
 start_time_df <- data.frame(
   group_and_condition = c("group0_jointlead",
                           "group0_leadfollow",
@@ -667,9 +666,11 @@ rm(df, df_name, ending_index, first_index, i, start_time, starting_index, start_
 
 ## Visualising gap-filling on trimmed data
 
+### Raw data visualizing: Only relevant timeframe
+
 First we visualise the untrimmed dataset:
 
-```{r}
+```{r raw_data_visualising}
 # Assuming markers_of_interest is defined and has at least 4 elements
 # Assuming gap_fill_linear is a function that performs linear gap filling
 
@@ -703,9 +704,40 @@ for (i in seq_along(list_of_dataframes_unfilled)) {
 
 There are a couple of errors clearly visible in the plots, that will have an impact on our analysis. For instance, group 8 gets cut off too early. Meaning the recording was either stopped before it should have been, or has been cut short during the session afterwards.
 
-Then we visualise the data after gap-filling:
+### Excluding bad data
+
+Going through the plots defined in the previous section, it is clear that some sets have artifacts or entirely missing data where linear gap-filling is not a viable solution. Therefore we exclude these entirely. Omitting data like this, is not ideal, but we have chosen that we would rather have proper data for fewer groups than bad data for many groups. The following table will show the excluded groups, as well as the reasoning for excluding them:
+
+| Group ID and condition | Markers | Reason for exclusion                                                               |
+|-------------------------|--------------|----------------------------------|
+| Group 0 Joint lead     | Chest   | Subject A is missing the chest marker for \~80 of the time.                        |
+| Group 12 Lead Follow   | All     | The only useable marker is chest, and that does not account for a lot of movement. |
+| Group 2 Lead Follow    | All     | Missing data.                                                                      |
+| Group 13 BOTH          | All     | Incorrect labelling.                                                               |
+
+: exclusion of data
+
+We will exclude these from the dataframe going forward
 
 ```{r}
+#removing markers
+list_of_dataframes$group0_jointlead %>% 
+  filter(marker != "chest")
+
+#removing dataframes
+list_of_dataframes[["group12_leadfollow"]] <- NULL
+list_of_dataframes[["group2_leadfollow"]] <- NULL
+list_of_dataframes[["group13_jointlead"]] <- NULL
+list_of_dataframes[["group13_leadfollow"]] <- NULL
+
+  
+```
+
+### Filled data visualising: Only relevant timeframe
+
+Then we visualise the data after gap-filling:
+
+```{r trimmed_data_visualising}
 # Assuming markers_of_interest is defined and has at least 4 elements
 # Assuming gap_fill_linear is a function that performs linear gap filling
 
@@ -737,13 +769,15 @@ for (i in seq_along(list_of_dataframes)) {
 }
 ```
 
+# Early NA-checking
+
 ## NA checking pre-gapfill
 
 As clarified prior to gap filling, the following sections were used to choose which markers to include in our analysis. In the following we will use the list of dataframes that have been cut to the relevant 30 seconds yet not gap-filled to give a thorough overview of the actually relevant amount of NAs.
 
 For the most accurate analysis we wanted to include the following markers: Head, both hands and elbows, and chest. We checked for NA's to verify none of these markers have too many NAs.
 
-```{r}
+```{r na_check_pre_gapfill}
 combined_df <- dplyr::bind_rows(list_of_dataframes_unfilled) %>% 
   dplyr::ungroup()  
 
@@ -774,7 +808,7 @@ rm(non_na_pre_gap, na_pre_gap)
 
 We noticed that head_top didn't have a lot of NA's, so we checked whether or not it was the extra marker for A
 
-```{r checking to see which markers B have}
+```{r checking_to_see_which_markers_B_has}
   list_of_dataframes_unfilled$group0_jointlead %>%
   dplyr::filter(subject == "B") %>%
   distinct(marker)
@@ -786,7 +820,7 @@ head_top does not appear as a marker in the list, given subject B was only given
 
 ## Visualising the NAs
 
-```{r}
+```{r visualising_nas_number}
 # Combine all dataframes in list_of_dataframes into one dataframe
 combined_df <- dplyr::bind_rows(list_of_dataframes_unfilled, .id = "group")
 
@@ -814,7 +848,7 @@ print(p)
 rm(p, result, columns_to_summarize, na_columns)
 ```
 
-```{r}
+```{r visualising_na_sequence}
 # Now we can get the longest sequence of NAs for each marker
 # Function to calculate the longest NA run length
 max_na_run_length <- function(vec) {
@@ -851,7 +885,7 @@ Unfortunately, the elbow markers have a lot of NA's. According to our plots, the
 
 ### Euclidean distance
 
-```{r Euclidean distance plots for each marker}
+```{r Euclidean_distance_plots_for_each_marker}
 # Iterate directly over the dataframes in list_of_dataframes
 for (df in list_of_dataframes_unfilled) {
   # Calculate the euclidean distance between each marker (using x, y, z)
@@ -930,7 +964,7 @@ rm(df, marker_distances, plot)
 
 (inspecting to further validate the selection of markers -\> the markers chosen account for most of movement)
 
-```{r for loop that plots x-coordinates for all markers in all groups}
+```{r for_loop_that_plots_xcoordinates_for_all_markers_in_all_groups}
 ## Making a for loop that plots x-coordinates for all markers in all groups
 for (df in list_of_dataframes_unfilled) {
  # Create ggplot
@@ -947,7 +981,7 @@ for (df in list_of_dataframes_unfilled) {
 rm(df, plot)
 ```
 
-```{r for loop that plots y-coordinates for all markers in all groups}
+```{r for_loop_that_plots_ycoordinates_for_all_markers_in_all_groups}
 ## Making a for loop that plots y-coordinates for all markers in all groups
 for (df in list_of_dataframes_unfilled) {
  # Create ggplot
@@ -964,7 +998,8 @@ for (df in list_of_dataframes_unfilled) {
 
 rm(df, plot)
 ```
-```{r x-coordinates for all groups in one plot}
+
+```{r xcoordinates_for_all_groups_in_one_plot}
 # Combine all data frames into one
 h <- bind_rows(list_of_dataframes_unfilled)
 
@@ -980,8 +1015,7 @@ print(plot)
 
 ```
 
-
-```{r y-coordinates for all groups in one plot}
+```{r ycoordinates_for_all_groups_in_one_plot}
 # Combine all data frames into one
 h <- bind_rows(list_of_dataframes_unfilled)
 
@@ -998,15 +1032,11 @@ print(plot)
 
 ```
 
-
-
-
-
 It is clear the quality of the dataset differs immensely, and some groups have significantly more NA's than others.
 
 ## NA-check only relevant markers pre gap-fill
 
-```{r}
+```{r na_only_relevant_markers_pregap}
 # Apply the filter to each dataframe in list_of_dataframes
 list_of_dataframes_unfilled <- lapply(list_of_dataframes_unfilled, function(df) {
   df %>% dplyr::filter(marker %in% markers_of_interest)
@@ -1040,7 +1070,7 @@ rm(non_na_post_gap, na_post_gap)
 
 ## NA check post gap-fill
 
-```{r}
+```{r na_only_relevant_markers_postgap}
 #overwriting the combined with the gap filled from the list
 combined_df <- dplyr::bind_rows(list_of_dataframes) %>% 
   dplyr::ungroup()  
@@ -1074,7 +1104,7 @@ We still have a lot of NA's caused by inadequate registering of markers during e
 
 We will continue analysis in a separate file
 
-```{r}
+```{r saving_preprocessed_csv}
 # Create a sub-directory for the CSV files if it doesn't already exist
 dir.create("data/mocap_data_prepped", showWarnings = FALSE, recursive = TRUE)
 

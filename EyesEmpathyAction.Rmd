@@ -4,10 +4,19 @@ author: "Katharina Hellmund & Nadia Hajighassem"
 date: "2023-12-09"
 output:
   html_document:
-    toc: true
-    toc_float: true
-    number_sections: true
-    theme: journal
+     toc: true
+     toc_float: true
+     number_sections: true
+     theme: journal
+mainfont: Times New Roman
+geometry: margin=1in
+knit: (function(inputFile, encoding) {
+  browseURL(
+    rmarkdown::render(
+      inputFile,
+      encoding = encoding,
+      output_dir = "html.file",
+      output_file = "DTW_PCA.html"))})
 ---
 
 ```{r setup, include=FALSE}
@@ -114,8 +123,8 @@ dance_survey <- dance_survey %>%
 ## Motion Capture
 
 ```{r motion_data}
-synchrony_scores_PCA <- read_csv("results/dtw_results_df_PCA.csv")
-synchrony_scores_ICA <- read_csv("results/dtw_results_PCA.csv") #PLACEHOLDER!!!!!
+synchrony_scores_PCA <- read_csv("results/dtw_results_PCA.csv")
+# synchrony_scores_ICA <- read_csv("results/dtw_results_ICA.csv") #PLACEHOLDER!!!!!
 ```
 
 # Exploratory data-analysis
@@ -402,21 +411,19 @@ dance_survey %>%
 
 # **Synchrony**
 
-Lets model both synchrony scores for ICA and PCA
-
 ```{r}
-synchrony_scores_ICA %>%
-  ggplot(aes(x=DTW_Distance)) +
-  geom_density(fill = global_fill_colour, alpha=0.7) +
-    xlim(0, 6000) +
-  labs(title="Density Plot of ICA synchrony scores", 
-       x="DTW synchrony Score", 
-       y="Density") 
+# synchrony_scores_ICA %>%
+#   ggplot(aes(x=DTW_Distance)) +
+#   geom_density(fill = global_fill_colour, alpha=0.7) +
+#     xlim(0, 6000) +
+#   labs(title="Density Plot of ICA synchrony scores", 
+#        x="DTW synchrony Score", 
+#        y="Density") 
 
 synchrony_scores_PCA %>%
-  ggplot(aes(x=Mean_DTW_Distance)) +
+  ggplot(aes(x=DTW_Sum)) +
   geom_density(fill = global_fill_colour, alpha=0.7) +
-    xlim(0, 300) +
+  xlim(0,10000)
   labs(title="Density Plot of PCA synchrony scores", 
        x="DTW synchrony Score", 
        y="Density")
@@ -432,14 +439,26 @@ synchrony_scores <- synchrony_scores_PCA
 
 Before plotting we must unify the dataframes into something usable. There is only one synchrony score per pair, so the A and B pair will have the same score. However, they will each have two scores stemming from the two conditions: Joint Lead and lead follower.
 
-We start by reshaping into a wide format.
+We start by reshaping the data into a wide format.
 
 ```{r}
+#Some tweaking to synchrony scores so it works and has the same format, like adding a group column
+synchrony_scores <- synchrony_scores %>%
+  mutate(Group = as.numeric(stringr::str_extract(DF_Name, "\\d+")))
+
+synchrony_scores <- synchrony_scores %>%
+  mutate(DF_Name = case_when(
+    grepl("jointlead", DF_Name) ~ "jointlead",
+    grepl("leadfollow", DF_Name) ~ "leadfollow",
+    TRUE ~ NA_character_ # Replace with NA or any other placeholder as per your requirement
+  ))
+
 # Reshaping the dataframe
 synchrony_scores <- synchrony_scores %>%
+  select(DF_Name,DTW_Sum,Group) %>% 
   pivot_wider(
-    names_from = Condition, 
-    values_from = Mean_DTW_Distance,
+    names_from = DF_Name, 
+    values_from = DTW_Sum,
     names_prefix = "DTW_"
   )
 ```
@@ -499,7 +518,7 @@ complete_df <- na.omit(complete_df) #OMITTING ALL NAS!!!! SOME DONT HAVE A DTW S
 #EQ DTW
 ggplot(complete_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
   geom_point() +
-  geom_smooth(se=FALSE)+
+  geom_smooth(se=FALSE, method = glm)+
   ylim(0, 6000)+
   labs(
     title = "DTW Values vs EQ Score",
@@ -512,7 +531,7 @@ ggplot(complete_df, aes(x = EQ_score, y = DTW_Value, color = DTW_Type)) +
 #F1 DTW
 ggplot(complete_df, aes(x = Factor1_BodyAwareness_score, y = DTW_Value, color = DTW_Type)) +
   geom_point() +
-  geom_smooth(se=FALSE)+
+  geom_smooth(se=FALSE, method = glm)+
   ylim(0, 6000)+
   labs(
     title = "DTW Values vs Body Awareness",
@@ -525,7 +544,7 @@ ggplot(complete_df, aes(x = Factor1_BodyAwareness_score, y = DTW_Value, color = 
 #F2 DTW
 ggplot(complete_df, aes(x = Factor2_SocialDancing_score, y = DTW_Value, color = DTW_Type)) +
   geom_point() +
-  geom_smooth(se=FALSE)+
+  geom_smooth(se=FALSE, method = glm)+
   ylim(0, 6000)+
   labs(
     title = "DTW Values vs Social Dancing",
@@ -584,7 +603,7 @@ ggplot(residuals_df, aes(sample = Residuals)) +
          y = "Sample Quantiles")
 ```
 
-There is a slight departure from the line towards the tail which indicates a departure from normality.
+There is a slight departure from the line which indicates a departure from normality.
 
 ### **Homoscedasticity (Homogeneity of variance):**
 
@@ -635,7 +654,7 @@ influential_obs <- which(cooks_dist > threshold)
 print(influential_obs)
 ```
 
-According to Cook's distance, observation 6, 8 and 24 have especially large influence over the model. These observations correspond to the index in complete_df.
+According to Cook's distance, observation 6, 7, 9, 10, 17, 18, 20 have especially large influence over the model. These observations correspond to the index in complete_df. It is to be expected with a dataset this small that singular values have more power over the final model.
 
 ## **Model fit and interpretation**
 
@@ -653,7 +672,35 @@ anova(model)
 | Factor2_SocialDancing_score + (1 \| `Participant ID`)             |
 +-------------------------------------------------------------------+
 
-*ADD INTERPRETATION AFTER PCA*
+**Scaled residuals:**
+
+The scaled residuals tell us about range and spread of residuals. This, in turn tells us of our models tendency to overestimate or underestimate as well as any extreme outliers. The residuals range from -1.4552 to 1.4240. As this is within the -2 to 2 range (rule can be applied because they have been scaled and have mean of 0 and sd of 1), it indicates that there are no extreme outliers in our residuals. This is good for the model.
+
+**Random effects:**
+
+(OBS WHY ARE THESE SO HIGH? WHAT DOES IT MEAN HELT KONKRET?)
+
+Our model has each participant ID as a random effect. The variance is 985775 with an sd of 992.9.
+
+**Fixed effects:**
+
+Holding all other predictors constant, the model predicts the following increase in DTW per 1 increase in fixed effect:
+
++-----------------------------+-----------------------------+--------------+
+| Predictor                   | Effect on DTW per 1 step    | T-value      |
++=============================+=============================+==============+
+| EQ-score                    | 48.82                       | 1.218 (NO)   |
++-----------------------------+-----------------------------+--------------+
+| DTW_Type\$DTW_leadfollow    | -2218.35                    | -3.553 (YES) |
++-----------------------------+-----------------------------+--------------+
+| Factor1_BodyAwareness_score | -113.68                     | -1.384 (NO)  |
++-----------------------------+-----------------------------+--------------+
+| Factor2_SocialDancing_score | 35.41                       | 0.525 (NO)   |
++-----------------------------+-----------------------------+--------------+
+
+**ANOVA:**
+
+The anova results confirm what the the t-value effects suggested: the only statistically significant predictor is the condition type.
 
 # **Visualising**
 

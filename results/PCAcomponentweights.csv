@@ -1,0 +1,13 @@
+groupid,dimension_1_weight,dimension_2_weight
+group0_jointlead,0.59,0.202
+group0_leadfollow,0.633,0.23
+group1_jointlead,0.51,0.387
+group1_leadfollow,0.703,0.167
+group12_jointlead,0.754,0.14
+group2_jointlead,0.44,0.373
+group3_jointlead,0.764,0.178
+group3_leadfollow,0.517,0.238
+group4_leadfollow,0.577,0.306
+group6_jointlead,0.51,0.19
+group6_leadfollow,0.625,0.163
+group8_leadfollow,0.554,0.253

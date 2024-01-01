@@ -1,18 +1,27 @@
 ---
 title: "PCA"
-author: "Katharina Hellmund"
+author: "Katharina Hellmund & Nadia Hajighassem"
 date: "2023-12-29"
 output:
-  pdf_document: default
   html_document:
-    df_print: paged
+     toc: true
+     toc_float: true
+     number_sections: true
+     theme: journal
 mainfont: Times New Roman
+geometry: margin=1in
+knit: (function(inputFile, encoding) {
+  browseURL(
+    rmarkdown::render(
+      inputFile,
+      encoding = encoding,
+      output_dir = "html.file",
+      output_file = "PCA.html"))})
 ---
 
-```{r setup}
+```{r setup, message = FALSE, warning = FALSE, include = FALSE}
 ## Setup chunk
-knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE, warning = FALSE)
-
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 pacman::p_load(
   "XML",
@@ -223,22 +232,44 @@ for (df_name in names(list_of_dataframes)) {
 ## Covariance/correlation matrix
 
 ```{r}
-for (i in 1:16) {
-    # Ensure the index is within the list length
-    if (i <= length(list_of_dataframes_A)) {
-        corr_matrix_A <- cor(list_of_dataframes_A[[i]])
-        plot_A <- ggcorrplot(corr_matrix_A) +
-                  ggtitle(paste("Correlation Matrix for DataFrame A", i))
-        print(plot_A)
-    }
+library(ggplot2)
+library(tidyr)
 
-    if (i <= length(list_of_dataframes_B)) {
-        corr_matrix_B <- cor(list_of_dataframes_B[[i]])
-        plot_B <- ggcorrplot(corr_matrix_B) +
-                  ggtitle(paste("Correlation Matrix for DataFrame B", i))
-        print(plot_B)
-    }
+# Function to create a correlation matrix plot using ggplot2
+create_corr_plot <- function(corr_matrix, df_name, subject) {
+    # Transforming the correlation matrix into a long format
+    corr_data <- as.data.frame(as.table(corr_matrix))
+    names(corr_data) <- c("Var1", "Var2", "Correlation")
+    
+    # Create the plot
+    ggplot(corr_data, aes(Var1, Var2, fill = Correlation)) +
+        geom_tile() +
+        scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+        theme_ipsum() +  # Apply the theme_ipsum
+        labs(
+            title = "Correlation Matrix",
+            subtitle = paste(df_name, subject)
+        ) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        coord_fixed()  # Ensure a 1:1 aspect ratio
 }
+
+# Looping through list_of_dataframes_A
+for (i in seq_along(list_of_dataframes_A)) {
+    df_name_A <- names(list_of_dataframes_A)[i]
+    corr_matrix_A <- cor(list_of_dataframes_A[[i]])
+    plot_A <- create_corr_plot(corr_matrix_A, df_name_A, "Subject A")
+    print(plot_A)
+}
+
+# Looping through list_of_dataframes_B
+for (i in seq_along(list_of_dataframes_B)) {
+    df_name_B <- names(list_of_dataframes_B)[i]
+    corr_matrix_B <- cor(list_of_dataframes_B[[i]])
+    plot_B <- create_corr_plot(corr_matrix_B, df_name_B, "Subject B")
+    print(plot_B)
+}
+
 ```
 
 # Running PCA
@@ -305,8 +336,6 @@ rm(corr_matrix_A, corr_matrix_B, df, df_A, df_B, pca_A, pca_B)
 library(factoextra)
 library(hrbrthemes) # for theme_ipsum()
 
-# Assuming global_fill_colour is defined
-
 # Loop through each dataframe in list_of_dataframes
 for (df_name in names(list_of_dataframes)) {
   # Extract the current dataframe
@@ -331,6 +360,52 @@ for (df_name in names(list_of_dataframes)) {
   # To save: ggsave(paste0("ScreePlot_", df_name, ".png"), scree_plot)
 }
 
+```
+
+## Exporting each components weight:
+
+Using the information from the screeplots, we can deduce the weight we should assign to each component which will be useful in calculating a combined DTW score for the pair:
+
+```{r assigning_weights_from_scree}
+PCA_component_weights <- data.frame(
+  groupid = c("group0_jointlead", 
+            "group0_leadfollow",
+            "group1_jointlead",
+            "group1_leadfollow",
+            "group12_jointlead",
+            "group2_jointlead",
+            "group3_jointlead",
+            "group3_leadfollow",
+            "group4_leadfollow",
+            "group6_jointlead",
+            "group6_leadfollow",
+            "group8_leadfollow"),
+  dimension_1_weight = c(0.59,
+                         0.633,
+                         0.51,
+                         0.703,
+                         0.754,
+                         0.44,
+                         0.764,
+                         0.517,
+                         0.577,
+                         0.51,
+                         0.625,
+                         0.554),
+  dimension_2_weight= c(0.202,
+                        0.23,
+                        0.387,
+                        0.167,
+                        0.14,
+                        0.373,
+                        0.178,
+                        0.238,
+                        0.306,
+                        0.19,
+                        0.163,
+                        0.253)
+)
+write_csv(PCA_component_weights, "results/PCAcomponentweights.csv")
 ```
 
 ## Bug fix: PCA sign ambiguity
@@ -472,9 +547,4 @@ save_component_list_as_csv <- function(component_list, dir_path, suffix = "") {
 save_component_list_as_csv(pca_components_list_A, "results/PCA", "_A")
 # The files from pca_components_list_B can have no suffix or a different one (e.g., "_B")
 save_component_list_as_csv(pca_components_list_B, "results/PCA", "_B")
-
-
-print(pca_components_list_A$group0_jointlead_A)
-
-
 ```
