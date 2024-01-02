@@ -267,8 +267,9 @@ columns_to_reverse <- names(question_cols)[columns_to_reverse]
 # Copy the original dataframe
 empathy_questionnaire_reversed <- empathy_questionnaire
 
-# Apply the reversal only to the specified columns
-empathy_questionnaire_reversed[columns_to_reverse] <- 11 - empathy_questionnaire_reversed[columns_to_reverse]
+# Apply the reversal only to the specified columns 
+#the range is 1 to 7, so 8-n effectively reverses the score :)
+empathy_questionnaire_reversed[columns_to_reverse] <- 8 - empathy_questionnaire_reversed[columns_to_reverse]
 
 # Calculate the sum of the "question:" columns per row and add it as a new column
 empathy_questionnaire_reversed <- empathy_questionnaire_reversed %>%
@@ -423,8 +424,8 @@ dance_survey %>%
 synchrony_scores_PCA %>%
   ggplot(aes(x=DTW_Sum)) +
   geom_density(fill = global_fill_colour, alpha=0.7) +
-  xlim(0,10000)
-  labs(title="Density Plot of PCA synchrony scores", 
+  xlim(0,10000)+
+  labs(title="Density Plot of DTW synchrony scores", 
        x="DTW synchrony Score", 
        y="Density")
 ```

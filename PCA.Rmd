@@ -491,7 +491,7 @@ for (i in seq_along(pca_components_list_A)) {
   p <- ggplot(combined_df, aes(x = time, y = value, color = group)) +
     geom_line(size = 1) +
     labs(
-      title = "Principle components", 
+      title = "Principal components", 
       subtitle = group_number,
          x = "Time", y = "Component Value", color = "Subject") +
     scale_color_manual(values = aesthetic_highlight_difference_palette)

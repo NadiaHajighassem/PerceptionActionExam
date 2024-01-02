@@ -709,7 +709,7 @@ There are a couple of errors clearly visible in the plots, that will have an imp
 Going through the plots defined in the previous section, it is clear that some sets have artifacts or entirely missing data where linear gap-filling is not a viable solution. Therefore we exclude these entirely. Omitting data like this, is not ideal, but we have chosen that we would rather have proper data for fewer groups than bad data for many groups. The following table will show the excluded groups, as well as the reasoning for excluding them:
 
 | Group ID and condition | Markers | Reason for exclusion                                                               |
-|-------------------------|--------------|----------------------------------|
+|------------------------|---------|------------------------------------------------------------------------------------|
 | Group 0 Joint lead     | Chest   | Subject A is missing the chest marker for \~80 of the time.                        |
 | Group 12 Lead Follow   | All     | The only useable marker is chest, and that does not account for a lot of movement. |
 | Group 2 Lead Follow    | All     | Missing data.                                                                      |
