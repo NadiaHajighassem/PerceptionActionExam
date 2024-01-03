@@ -51,13 +51,13 @@ if (basename(wd) != "PerceptionActionExam") {
   setwd("./PerceptionActionExam")
 }
 
-  #                             ##NADIA PATH##
-  # data_dir <- path_home() %>% 
-  #   path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
+                             ##NADIA PATH##
+   data_dir <- path_home() %>% 
+     path("Documents", "GitHub", "PerceptionActionExam-Clean-up-attempt", "data", "tsvs") ## Nadia's path
 
                               #KATHARINA PATH##
-data_dir <- path_home() %>%
-path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
+# data_dir <- path_home() %>%
+# path("Desktop","UNI", "3.semester", "Perception & Action", "PerceptionActionExam", "data", "tsvs") ## Katharina's path
 
 
 #Aesthetic setup
@@ -912,8 +912,7 @@ for (df in list_of_dataframes_unfilled) {
       y = "Euclidean distance",
       title = "Euclidean distance from the previous frame by marker",
       subtitle = paste( df$group[1], "Condition:", df$condition[1])
-    )+
-  scale_color_manual(values = aesthetic_palette)
+    )
   
   # Print the plot
   print(plot)
