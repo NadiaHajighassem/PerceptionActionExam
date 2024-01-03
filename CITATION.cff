@@ -1,6 +1,10 @@
-@software{From Motion to Emotion,
-  author = {Katharina Hellmund & Nadia Hajighassem},
-  title = {{From Motion to Emotion: Github Repository}},
-  url = {https://github.com/NadiaHajighassem/PerceptionActionExam/},
-  year = {2024}
-}
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Hellmund"
+  given-names: "Katharina"
+- family-names: "Hajighassem"
+  given-names: "Nadia"
+title: "Motion to Emotion: GitHub repository"
+date-released: 2024-03-01
+url: "https://github.com/NadiaHajighassem/PerceptionActionExam"
